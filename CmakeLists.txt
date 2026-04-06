@@ -14,12 +14,6 @@ endif()
 option(WYVERN_BUILD_FOUNDATION "Build Wyvern foundation server target" ON)
 
 set(WYVERN_CORE_DIR "" CACHE PATH "Path to external Core directory")
-if(NOT WYVERN_CORE_DIR AND DEFINED EDUSPACE_CORE_DIR)
-  set(WYVERN_CORE_DIR "${EDUSPACE_CORE_DIR}")
-endif()
-if(DEFINED EDUSPACE_BUILD_SERVER_NEW)
-  set(WYVERN_BUILD_FOUNDATION "${EDUSPACE_BUILD_SERVER_NEW}")
-endif()
 
 set(_wyvern_core_candidates "")
 if(WYVERN_CORE_DIR)
@@ -52,7 +46,8 @@ if(WYVERN_BUILD_FOUNDATION)
   find_package(Boost REQUIRED COMPONENTS system thread program_options)
 
   add_executable(wyvern_server_foundation
-    KursachLao-ServerSide.cpp
+    Server/platform/ServerFoundationMain.cpp
+    Server/platform/plugins/PluginManager.cpp
     Server/server/FileCache.cpp
     Server/server/RequestHandler.cpp
   )
@@ -60,6 +55,8 @@ if(WYVERN_BUILD_FOUNDATION)
   target_include_directories(wyvern_server_foundation
     PRIVATE
       ${CMAKE_SOURCE_DIR}/Server/architecture
+      ${CMAKE_SOURCE_DIR}/Server/platform/plugins
+      ${CMAKE_SOURCE_DIR}/Server/platform/runtime
       ${CMAKE_SOURCE_DIR}/Server/server
       ${CMAKE_SOURCE_DIR}/Server/utils
   )

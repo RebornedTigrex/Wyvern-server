@@ -7,13 +7,13 @@ The script auto-detects Visual Studio C++ tools (via vswhere + VsDevCmd),
 resolves VCPKG_ROOT (env or common fallback paths), then runs CMake configure/build.
 
 .PARAMETER Preset
-CMake configure preset name (default: x64-debug or $env:WYVERN_PRESET / $env:EDUSPACE_PRESET).
+CMake configure preset name (default: x64-debug or $env:WYVERN_PRESET).
 
 .PARAMETER BuildDir
-Custom binary directory (default: out/build/<preset>-foundation or $env:WYVERN_BUILD_DIR / $env:EDUSPACE_BUILD_DIR).
+Custom binary directory (default: out/build/<preset>-foundation or $env:WYVERN_BUILD_DIR).
 
 .PARAMETER Target
-Build target name (default: wyvern_server_foundation or $env:WYVERN_TARGET / $env:EDUSPACE_TARGET).
+Build target name (default: wyvern_server_foundation or $env:WYVERN_TARGET).
 
 .PARAMETER ConfigureOnly
 Run only CMake configure step.
@@ -43,12 +43,6 @@ param(
     [string]$Target = "",
     [ValidateSet("ON", "OFF")]
     [string]$BuildFoundation = "",
-    [ValidateSet("ON", "OFF")]
-    [string]$BuildServer = "",
-    [ValidateSet("ON", "OFF")]
-    [string]$BuildCli = "",
-    [ValidateSet("ON", "OFF")]
-    [string]$BuildServerNew = "",
     [int]$Jobs = 0,
     [switch]$ConfigureOnly,
     [switch]$BuildOnly,
@@ -61,8 +55,6 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($Preset)) {
     if ($env:WYVERN_PRESET) {
         $Preset = $env:WYVERN_PRESET
-    } elseif ($env:EDUSPACE_PRESET) {
-        $Preset = $env:EDUSPACE_PRESET
     } else {
         $Preset = "x64-debug"
     }
@@ -73,8 +65,6 @@ if ([string]::IsNullOrWhiteSpace($SourceDir)) {
 if ([string]::IsNullOrWhiteSpace($BuildDir)) {
     if ($env:WYVERN_BUILD_DIR) {
         $BuildDir = $env:WYVERN_BUILD_DIR
-    } elseif ($env:EDUSPACE_BUILD_DIR) {
-        $BuildDir = $env:EDUSPACE_BUILD_DIR
     } else {
         $BuildDir = Join-Path $PSScriptRoot ("out/build/{0}-foundation" -f $Preset)
     }
@@ -82,8 +72,6 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
 if ([string]::IsNullOrWhiteSpace($Target)) {
     if ($env:WYVERN_TARGET) {
         $Target = $env:WYVERN_TARGET
-    } elseif ($env:EDUSPACE_TARGET) {
-        $Target = $env:EDUSPACE_TARGET
     } else {
         $Target = "wyvern_server_foundation"
     }
@@ -91,10 +79,6 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
 if ([string]::IsNullOrWhiteSpace($BuildFoundation)) {
     if ($env:WYVERN_BUILD_FOUNDATION) {
         $BuildFoundation = $env:WYVERN_BUILD_FOUNDATION
-    } elseif ($BuildServerNew) {
-        $BuildFoundation = $BuildServerNew
-    } elseif ($env:EDUSPACE_BUILD_SERVER_NEW) {
-        $BuildFoundation = $env:EDUSPACE_BUILD_SERVER_NEW
     } else {
         $BuildFoundation = "ON"
     }
@@ -102,8 +86,6 @@ if ([string]::IsNullOrWhiteSpace($BuildFoundation)) {
 if ($Jobs -le 0) {
     if ($env:WYVERN_JOBS) {
         $Jobs = [int]$env:WYVERN_JOBS
-    } elseif ($env:EDUSPACE_JOBS) {
-        $Jobs = [int]$env:EDUSPACE_JOBS
     } else {
         $Jobs = 8
     }
