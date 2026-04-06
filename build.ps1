@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-Build helper for EduSpace (MSVC + vcpkg + CMake presets).
+Build helper for Wyvern foundation server (MSVC + vcpkg + CMake presets).
 
 .DESCRIPTION
 The script auto-detects Visual Studio C++ tools (via vswhere + VsDevCmd),
 resolves VCPKG_ROOT (env or common fallback paths), then runs CMake configure/build.
 
 .PARAMETER Preset
-CMake configure preset name (default: x64-debug or $env:EDUSPACE_PRESET).
+CMake configure preset name (default: x64-debug or $env:WYVERN_PRESET / $env:EDUSPACE_PRESET).
 
 .PARAMETER BuildDir
-Custom binary directory (default: out/build/<preset>-mediasoup or $env:EDUSPACE_BUILD_DIR).
+Custom binary directory (default: out/build/<preset>-foundation or $env:WYVERN_BUILD_DIR / $env:EDUSPACE_BUILD_DIR).
 
 .PARAMETER Target
-Build target name (default: eds_server_new_mediasoup_app or $env:EDUSPACE_TARGET).
+Build target name (default: wyvern_server_foundation or $env:WYVERN_TARGET / $env:EDUSPACE_TARGET).
 
 .PARAMETER ConfigureOnly
 Run only CMake configure step.
@@ -28,11 +28,11 @@ Run built executable after successful build.
 pwsh -File .\build.ps1
 
 .EXAMPLE
-pwsh -File .\build.ps1 -Preset x64-release -Target eds_server_new_mediasoup_app
+pwsh -File .\build.ps1 -Preset x64-release -Target wyvern_server_foundation
 
 .EXAMPLE
-$env:EDUSPACE_PRESET = "x64-debug"
-$env:EDUSPACE_JOBS = "12"
+$env:WYVERN_PRESET = "x64-debug"
+$env:WYVERN_JOBS = "12"
 pwsh -File .\build.ps1 -Run
 #>
 [CmdletBinding()]
@@ -41,6 +41,8 @@ param(
     [string]$SourceDir = "",
     [string]$BuildDir = "",
     [string]$Target = "",
+    [ValidateSet("ON", "OFF")]
+    [string]$BuildFoundation = "",
     [ValidateSet("ON", "OFF")]
     [string]$BuildServer = "",
     [ValidateSet("ON", "OFF")]
@@ -57,32 +59,54 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($Preset)) {
-    $Preset = if ($env:EDUSPACE_PRESET) { $env:EDUSPACE_PRESET } else { "x64-debug" }
+    if ($env:WYVERN_PRESET) {
+        $Preset = $env:WYVERN_PRESET
+    } elseif ($env:EDUSPACE_PRESET) {
+        $Preset = $env:EDUSPACE_PRESET
+    } else {
+        $Preset = "x64-debug"
+    }
 }
 if ([string]::IsNullOrWhiteSpace($SourceDir)) {
     $SourceDir = if ($env:EDUSPACE_SOURCE_DIR) { $env:EDUSPACE_SOURCE_DIR } else { $PSScriptRoot }
 }
 if ([string]::IsNullOrWhiteSpace($BuildDir)) {
-    if ($env:EDUSPACE_BUILD_DIR) {
+    if ($env:WYVERN_BUILD_DIR) {
+        $BuildDir = $env:WYVERN_BUILD_DIR
+    } elseif ($env:EDUSPACE_BUILD_DIR) {
         $BuildDir = $env:EDUSPACE_BUILD_DIR
     } else {
-        $BuildDir = Join-Path $PSScriptRoot ("out/build/{0}-mediasoup" -f $Preset)
+        $BuildDir = Join-Path $PSScriptRoot ("out/build/{0}-foundation" -f $Preset)
     }
 }
 if ([string]::IsNullOrWhiteSpace($Target)) {
-    $Target = if ($env:EDUSPACE_TARGET) { $env:EDUSPACE_TARGET } else { "eds_server_new_mediasoup_app" }
+    if ($env:WYVERN_TARGET) {
+        $Target = $env:WYVERN_TARGET
+    } elseif ($env:EDUSPACE_TARGET) {
+        $Target = $env:EDUSPACE_TARGET
+    } else {
+        $Target = "wyvern_server_foundation"
+    }
 }
-if ([string]::IsNullOrWhiteSpace($BuildServer)) {
-    $BuildServer = if ($env:EDUSPACE_BUILD_SERVER) { $env:EDUSPACE_BUILD_SERVER } else { "OFF" }
-}
-if ([string]::IsNullOrWhiteSpace($BuildCli)) {
-    $BuildCli = if ($env:EDUSPACE_BUILD_CLI) { $env:EDUSPACE_BUILD_CLI } else { "OFF" }
-}
-if ([string]::IsNullOrWhiteSpace($BuildServerNew)) {
-    $BuildServerNew = if ($env:EDUSPACE_BUILD_SERVER_NEW) { $env:EDUSPACE_BUILD_SERVER_NEW } else { "ON" }
+if ([string]::IsNullOrWhiteSpace($BuildFoundation)) {
+    if ($env:WYVERN_BUILD_FOUNDATION) {
+        $BuildFoundation = $env:WYVERN_BUILD_FOUNDATION
+    } elseif ($BuildServerNew) {
+        $BuildFoundation = $BuildServerNew
+    } elseif ($env:EDUSPACE_BUILD_SERVER_NEW) {
+        $BuildFoundation = $env:EDUSPACE_BUILD_SERVER_NEW
+    } else {
+        $BuildFoundation = "ON"
+    }
 }
 if ($Jobs -le 0) {
-    $Jobs = if ($env:EDUSPACE_JOBS) { [int]$env:EDUSPACE_JOBS } else { 8 }
+    if ($env:WYVERN_JOBS) {
+        $Jobs = [int]$env:WYVERN_JOBS
+    } elseif ($env:EDUSPACE_JOBS) {
+        $Jobs = [int]$env:EDUSPACE_JOBS
+    } else {
+        $Jobs = 8
+    }
 }
 
 function Resolve-VsWherePath {
@@ -185,12 +209,11 @@ Write-Host "Re-applied VCPKG_ROOT after VsDevCmd: $env:VCPKG_ROOT"
 
 if (-not $BuildOnly) {
     $configureArgs = @(
+        "-Wno-dev",
         "--preset", $Preset,
         "-S", $SourceDir,
         "-B", $BuildDir,
-        "-DEDUSPACE_BUILD_SERVER=$BuildServer",
-        "-DEDUSPACE_BUILD_CLI=$BuildCli",
-        "-DEDUSPACE_BUILD_SERVER_NEW=$BuildServerNew"
+        "-DWYVERN_BUILD_FOUNDATION=$BuildFoundation"
     )
     Invoke-External -Exe "cmake" -Args $configureArgs
 }
@@ -209,7 +232,6 @@ if (-not $ConfigureOnly) {
 
 if ($Run) {
     $exeCandidates = @(
-        (Join-Path $BuildDir "EDS_serverNew\$Target.exe"),
         (Join-Path $BuildDir "$Target.exe")
     )
     $exePath = $exeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1

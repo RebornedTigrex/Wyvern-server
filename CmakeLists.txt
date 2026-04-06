@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.20)
-project(EduSpace LANGUAGES CXX)
+project(WyvernServer LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -7,48 +7,72 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
 endif()
-
-option(EDUSPACE_BUILD_SERVER "Build EDS_server target" OFF)
-option(EDUSPACE_BUILD_CLI "Build Cli target" ON)
-option(EDUSPACE_BUILD_SERVER_NEW "Build EDS_serverNew rewrite target" ON)
-
-set(EDUSPACE_CORE_DIR "" CACHE PATH "Path to external EduSpace Core directory")
-
-set(_eduspace_core_candidates "")
-if(EDUSPACE_CORE_DIR)
-  list(APPEND _eduspace_core_candidates "${EDUSPACE_CORE_DIR}")
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 OLD)
 endif()
-list(APPEND _eduspace_core_candidates
+
+option(WYVERN_BUILD_FOUNDATION "Build Wyvern foundation server target" ON)
+
+set(WYVERN_CORE_DIR "" CACHE PATH "Path to external Core directory")
+if(NOT WYVERN_CORE_DIR AND DEFINED EDUSPACE_CORE_DIR)
+  set(WYVERN_CORE_DIR "${EDUSPACE_CORE_DIR}")
+endif()
+if(DEFINED EDUSPACE_BUILD_SERVER_NEW)
+  set(WYVERN_BUILD_FOUNDATION "${EDUSPACE_BUILD_SERVER_NEW}")
+endif()
+
+set(_wyvern_core_candidates "")
+if(WYVERN_CORE_DIR)
+  list(APPEND _wyvern_core_candidates "${WYVERN_CORE_DIR}")
+endif()
+list(APPEND _wyvern_core_candidates
   "${CMAKE_SOURCE_DIR}/../Core"
   "${CMAKE_SOURCE_DIR}/Core"
 )
 
-set(EDUSPACE_RESOLVED_CORE_DIR "")
-foreach(_candidate IN LISTS _eduspace_core_candidates)
+set(WYVERN_RESOLVED_CORE_DIR "")
+foreach(_candidate IN LISTS _wyvern_core_candidates)
   if(EXISTS "${_candidate}/CmakeLists.txt" OR EXISTS "${_candidate}/CMakeLists.txt")
-    set(EDUSPACE_RESOLVED_CORE_DIR "${_candidate}")
+    set(WYVERN_RESOLVED_CORE_DIR "${_candidate}")
     break()
   endif()
 endforeach()
 
-if(NOT EDUSPACE_RESOLVED_CORE_DIR)
+if(NOT WYVERN_RESOLVED_CORE_DIR)
   message(FATAL_ERROR
-    "EduSpace Core was not found. Set EDUSPACE_CORE_DIR to external Core path "
+    "Core was not found. Set WYVERN_CORE_DIR to external Core path "
     "or keep Core as ../Core (preferred) / Core (fallback)."
   )
 endif()
 
-message(STATUS "Using EduSpace Core from: ${EDUSPACE_RESOLVED_CORE_DIR}")
-add_subdirectory("${EDUSPACE_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/eduspace_core")
+message(STATUS "Using Core from: ${WYVERN_RESOLVED_CORE_DIR}")
+add_subdirectory("${WYVERN_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_core")
 
-if(EDUSPACE_BUILD_SERVER)
-  add_subdirectory(EDS_server)
-endif()
+if(WYVERN_BUILD_FOUNDATION)
+  find_package(Boost REQUIRED COMPONENTS system thread program_options)
 
-if(EDUSPACE_BUILD_CLI)
-  add_subdirectory(Cli)
-endif()
+  add_executable(wyvern_server_foundation
+    KursachLao-ServerSide.cpp
+    Server/server/FileCache.cpp
+    Server/server/RequestHandler.cpp
+  )
 
-if(EDUSPACE_BUILD_SERVER_NEW)
-  add_subdirectory(EDS_serverNew)
+  target_include_directories(wyvern_server_foundation
+    PRIVATE
+      ${CMAKE_SOURCE_DIR}/Server/architecture
+      ${CMAKE_SOURCE_DIR}/Server/server
+      ${CMAKE_SOURCE_DIR}/Server/utils
+  )
+
+  target_link_libraries(wyvern_server_foundation
+    PRIVATE
+      Boost::system
+      Boost::thread
+      Boost::program_options
+  )
+
+  if(WIN32)
+    target_compile_definitions(wyvern_server_foundation PRIVATE _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(wyvern_server_foundation PRIVATE ws2_32 mswsock)
+  endif()
 endif()
