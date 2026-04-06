@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.20)
+project(EduSpaceCore LANGUAGES CXX)
+
+add_library(eduspace_core INTERFACE)
+add_library(EduSpace::Core ALIAS eduspace_core)
+
+target_compile_features(eduspace_core INTERFACE cxx_std_20)
+
+target_include_directories(eduspace_core
+  INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
+)
