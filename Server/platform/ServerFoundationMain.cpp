@@ -1,6 +1,7 @@
 ﻿#include "LambdaSenders.h"
 #include "Session.h"
-#include "PluginManager.h"
+#include "plugin_runtime/IPlugin.h"
+#include "plugin_runtime/PluginLifecycleManager.h"
 #include "ServerRuntimeContext.h"
 
 #include <boost/asio/ip/tcp.hpp>
@@ -16,8 +17,8 @@
 #include <string_view>
 #include <vector>
 
-using wyvern::platform::plugins::IPlugin;
-using wyvern::platform::plugins::PluginManager;
+using wyvern::plugin_runtime::IPlugin;
+using wyvern::plugin_runtime::PluginLifecycleManager;
 using wyvern::platform::runtime::ServerRuntimeContext;
 
 void printConnectionInfo(tcp::socket& socket) {
@@ -76,7 +77,7 @@ public:
     bool registerPlugin() override { return true; }
 
     bool init() override {
-        context_.requestHandler = context_.moduleRegistry.registerModule<RequestHandler>();
+        context_.requestHandler = context_.moduleRegistry->registerModule<RequestHandler>();
         return context_.requestHandler != nullptr;
     }
 
@@ -101,7 +102,7 @@ public:
     bool registerPlugin() override { return true; }
 
     bool init() override {
-        context_.fileCache = context_.moduleRegistry.registerModule<FileCache>(context_.config.directory.c_str(), true, 100);
+        context_.fileCache = context_.moduleRegistry->registerModule<FileCache>(context_.config.directory.c_str(), true, 100);
         return context_.fileCache != nullptr;
     }
 
@@ -128,16 +129,36 @@ public:
     std::string_view pluginId() const override { return "security.dos-protection"; }
     std::string_view version() const override { return "1.0.0"; }
     std::string_view kind() const override { return "security"; }
-    std::vector<std::string> dependencies() const override { return {}; }
+    std::vector<std::string> dependencies() const override { return { "transport.request-handler" }; }
 
     bool registerPlugin() override { return true; }
 
     bool init() override {
-        context_.dosProtection = context_.moduleRegistry.registerModule<DoSProtectionModule>();
+        context_.dosProtection = context_.moduleRegistry->registerModule<DoSProtectionModule>();
         return context_.dosProtection != nullptr;
     }
 
-    bool start() override { return true; }
+    bool start() override {
+        if (!context_.requestHandler || !context_.dosProtection) {
+            return false;
+        }
+
+        return context_.requestHandler->addMiddleware(
+            "security.dos-protection",
+            [this](const sRequest&, sResponce& res, const RequestHandler::RequestFlowContext& flowContext) {
+                if (flowContext.clientIp.empty() || context_.dosProtection->isAllowed(flowContext.clientIp)) {
+                    return true;
+                }
+
+                res.result(http::status::too_many_requests);
+                res.set(http::field::content_type, "application/json");
+                res.set(http::field::cache_control, "no-cache, must-revalidate");
+                res.body() = R"({"status":"rate_limited"})";
+                return false;
+            },
+            -100
+        );
+    }
     void stop() override {}
 
 private:
@@ -190,21 +211,25 @@ int main(int argc, char* argv[]) {
     //    << " Port: " << port << "\n"
     //    << " Directory: " << directory << "\n\n";
 //////////////////////////////////////////////////////////
-    PluginManager pluginManager;
-    if (!pluginManager.add(std::make_unique<RequestHandlerPlugin>(context))
-        || !pluginManager.add(std::make_unique<FileCachePlugin>(context))
-        || !pluginManager.add(std::make_unique<DoSProtectionPlugin>(context))
-        || !pluginManager.add(std::make_unique<PlatformRoutesPlugin>(context))) {
+    PluginLifecycleManager pluginLifecycleManager;
+    if (!pluginLifecycleManager.add(std::make_unique<RequestHandlerPlugin>(context))
+        || !pluginLifecycleManager.add(std::make_unique<FileCachePlugin>(context))
+        || !pluginLifecycleManager.add(std::make_unique<DoSProtectionPlugin>(context))
+        || !pluginLifecycleManager.add(std::make_unique<PlatformRoutesPlugin>(context))) {
         std::cerr << "Failed to add plugins to plugin manager." << std::endl;
         return EXIT_FAILURE;
     }
-
-    if (!pluginManager.registerAll() || !pluginManager.initAll() || !pluginManager.startAll()) {
+    if (!pluginLifecycleManager.startAll()) {
         std::cerr << "Plugin lifecycle failed during register/init/start." << std::endl;
+        if (const auto lastError = pluginLifecycleManager.lastError()) {
+            std::cerr << "Plugin lifecycle error:"
+                << " pluginId=" << lastError->pluginId
+                << " stage=" << lastError->stage
+                << " message=" << lastError->message << std::endl;
+        }
         return EXIT_FAILURE;
     }
-
-    if (!context.moduleRegistry.initializeAll()) {
+    if (!context.moduleRegistry || !context.moduleRegistry->initializeAll()) {
         std::cerr << "Module registry initialization failed." << std::endl;
         return EXIT_FAILURE;
     }
@@ -225,13 +250,7 @@ int main(int argc, char* argv[]) {
                 [socket_ptr = socket, &do_accept_func, &context](beast::error_code ec) {
                     if (!ec) {
                         printConnectionInfo(*socket_ptr);
-                        std::string ip = (*socket_ptr).remote_endpoint().address().to_string();
-                        if (context.dosProtection && context.dosProtection->isAllowed(ip)) {
-                            std::make_shared<session>(std::move(*socket_ptr), context.requestHandler)->run();
-                        }
-                        else {
-                            std::cout << "[" << ip << "] Connection terminated: DoS protection triggered (rate limit exceeded)\n";
-                        }
+                        std::make_shared<session>(std::move(*socket_ptr), context.requestHandler)->run();
                     }
                     else {
                         std::cerr << "Accept error: " << ec.message() << std::endl;
@@ -245,11 +264,15 @@ int main(int argc, char* argv[]) {
     }
     catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
-        pluginManager.stopAll();
-        context.moduleRegistry.shutdownAll();
+        pluginLifecycleManager.stopAll();
+        if (context.moduleRegistry) {
+            context.moduleRegistry->shutdownAll();
+        }
         return EXIT_FAILURE;
     }
-    pluginManager.stopAll();
-    context.moduleRegistry.shutdownAll();
+    pluginLifecycleManager.stopAll();
+    if (context.moduleRegistry) {
+        context.moduleRegistry->shutdownAll();
+    }
     return 0;
 }

@@ -75,8 +75,14 @@ private:
 
         // FIXED: Set cb ПОСЛЕ создания sp_sender, но ДО handleRequest
         sp_sender->after_write_cb_ = after_write;
+        RequestHandler::RequestFlowContext flowContext;
+        beast::error_code endpointError;
+        const auto endpoint = socket_.remote_endpoint(endpointError);
+        if (!endpointError) {
+            flowContext.clientIp = endpoint.address().to_string();
+        }
 
-        // Теперь handleRequest: sender живёт via sp, ref ok
+        module_->handleRequest(std::move(req_), sender_ref, flowContext);
         module_->handleRequest(std::move(req_), sender_ref);
     }
 

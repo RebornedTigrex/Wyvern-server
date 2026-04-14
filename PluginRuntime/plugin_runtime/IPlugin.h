@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace wyvern::platform::plugins {
+namespace wyvern::plugin_runtime {
 
 class IPlugin {
 public:
@@ -21,4 +21,5 @@ public:
     virtual void stop() = 0;
 };
 
-} // namespace wyvern::platform::plugins
+} // namespace wyvern::plugin_runtime
+

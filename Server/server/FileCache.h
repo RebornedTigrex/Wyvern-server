@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "BaseModule.h"  // Наследование от BaseModule
+#include "modules/BaseModule.h"  // Наследование от BaseModule
 #include <filesystem>
 #include <string>
 #include <unordered_map>

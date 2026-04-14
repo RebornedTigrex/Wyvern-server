@@ -6,15 +6,50 @@ RequestHandler::RequestHandler()
 }
 
 void RequestHandler::addDynamicRouteHandler(const std::string& regexPattern,
-    std::function<void(const http::request<http::string_body>&, http::response<http::string_body>&)> handler) {
+    RouteHandler handler) {
     try {
-        std::regex re(regexPattern);  // Компилируем regex заранее для эффективности
+        std::regex re(regexPattern);
         dynamicRouteHandlers_.emplace_back(re, handler);
     }
     catch (const std::regex_error& e) {
         std::cerr << "Invalid regex pattern: " << regexPattern << " - " << e.what() << std::endl;
-        // Для MVP: не добавляем, но не крашим
     }
+}
+
+bool RequestHandler::addMiddleware(std::string middlewareId, MiddlewareHandler handler, int order) {
+    if (middlewareId.empty() || !handler) {
+        return false;
+    }
+
+    auto exists = std::find_if(
+        middlewares_.begin(),
+        middlewares_.end(),
+        [&middlewareId](const MiddlewareRegistration& registration) {
+            return registration.middlewareId == middlewareId;
+        }
+    );
+    if (exists != middlewares_.end()) {
+        return false;
+    }
+
+    MiddlewareRegistration registration;
+    registration.middlewareId = std::move(middlewareId);
+    registration.order = order;
+    registration.handler = std::move(handler);
+    middlewares_.push_back(std::move(registration));
+
+    std::sort(
+        middlewares_.begin(),
+        middlewares_.end(),
+        [](const MiddlewareRegistration& lhs, const MiddlewareRegistration& rhs) {
+            if (lhs.order == rhs.order) {
+                return lhs.middlewareId < rhs.middlewareId;
+            }
+            return lhs.order < rhs.order;
+        }
+    );
+
+    return true;
 }
 
 bool RequestHandler::onInitialize() {
@@ -27,12 +62,14 @@ bool RequestHandler::onInitialize() {
 }
 
 void RequestHandler::onShutdown() {
+    middlewares_.clear();
+    dynamicRouteHandlers_.clear();
     routeHandlers_.clear();
     std::cout << "RequestHandler shutdown" << std::endl;
 }
 
 void RequestHandler::addRouteHandler(const std::string& path,
-    std::function<void(const http::request<http::string_body>&, http::response<http::string_body>&)> handler) {
+    RouteHandler handler) {
     routeHandlers_[path] = handler;
 }
 
