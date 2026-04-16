@@ -1,8 +1,6 @@
 ﻿#pragma once
 
-#include "contracts/Primitives.h"
-#include "interfaces/iAgent.h"
-#include "interfaces/iAgentManager.h"
+#include "contracts/IFeatureManager.h"
 #include "modules/BaseModule.h"
 #include "runtime/MessageDispatcher.h"
 
@@ -17,13 +15,13 @@
 // - регистрирует фабрики агентов
 // - лениво создаёт агента при первом сообщении
 // - маршрутизирует RoutedMessageEnvelope к нужному агенту
-class BaseFeatureManager : public BaseModule, public iAgentManager {
+class BaseFeatureManager : public BaseModule, public core::contracts::IFeatureManager {
 public:
-    BaseFeatureManager(const std::string& name, ModuleId id = static_cast<ModuleId>(-1))
-        : BaseModule(name, id) {
-    }
+    BaseFeatureManager(const std::string& name,
+                       core::contracts::ModuleId id = static_cast<core::contracts::ModuleId>(-1))
+        : BaseModule(name, id) {}
 
-    core::contracts::OperationStatus registerAgent(std::string type, tAgentFactory factory) override {
+    core::contracts::OperationStatus registerAgent(std::string type, AgentFactory factory) override {
         if (type.empty()) {
             return core::contracts::OperationStatus::failure("Agent type must not be empty.");
         }
@@ -32,18 +30,18 @@ public:
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
-        if (Agents.find(type) != Agents.end()) {
+        if (agents_.find(type) != agents_.end()) {
             return core::contracts::OperationStatus::failure("Agent already registered: " + type);
         }
 
-        Agents.emplace(std::move(type), std::move(factory));
+        agents_.emplace(std::move(type), std::move(factory));
         return core::contracts::OperationStatus::success();
     }
 
     core::contracts::OperationStatus unregisterAgent(std::string_view type) override {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto key = std::string(type);
-        const auto removedFactory = Agents.erase(key);
+        const auto removedFactory = agents_.erase(key);
         agentInstances_.erase(key);
 
         if (removedFactory == 0) {
@@ -60,24 +58,24 @@ public:
 
         const auto& route = envelope->route();
 
-        iAgent* agent = nullptr;
+        core::contracts::IAgent* agent = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
 
             std::string agentKey = route.agent;
             if (agentKey.empty()) {
-                if (Agents.empty()) {
+                if (agents_.empty()) {
                     return core::contracts::OperationStatus::failure("No agents registered.");
                 }
-                if (Agents.size() > 1) {
+                if (agents_.size() > 1) {
                     return core::contracts::OperationStatus::failure("Route agent is empty and manager has multiple agents.");
                 }
-                agentKey = Agents.begin()->first;
+                agentKey = agents_.begin()->first;
             }
 
             auto it = agentInstances_.find(agentKey);
             if (it == agentInstances_.end()) {
-                auto fit = Agents.find(agentKey);
+                auto fit = agents_.find(agentKey);
                 if (fit == Agents.end()) {
                     return core::contracts::OperationStatus::failure("Agent factory not found: " + agentKey);
                 }
@@ -107,5 +105,6 @@ protected:
 
 private:
     mutable std::mutex mutex_;
-    std::unordered_map<std::string, std::unique_ptr<iAgent>> agentInstances_;
+    std::unordered_map<std::string, AgentFactory> agents_;
+    std::unordered_map<std::string, std::unique_ptr<core::contracts::IAgent>> agentInstances_;
 };

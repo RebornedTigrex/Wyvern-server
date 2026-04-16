@@ -7,7 +7,7 @@
 
 namespace core::contracts {
 
-class IAction : public IModule {
+class IAction : public virtual IModule {
 public:
     virtual ~IAction() = default;
     virtual std::string_view actionKey() const = 0;

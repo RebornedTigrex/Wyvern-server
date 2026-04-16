@@ -14,8 +14,6 @@ endif()
 option(WYVERN_BUILD_FOUNDATION "Build Wyvern foundation server target" ON)
 
 set(WYVERN_CORE_DIR "" CACHE PATH "Path to external Core directory")
-set(WYVERN_PLUGIN_RUNTIME_DIR "" CACHE PATH "Path to external PluginRuntime directory")
-
 set(_wyvern_core_candidates "")
 if(WYVERN_CORE_DIR)
   list(APPEND _wyvern_core_candidates "${WYVERN_CORE_DIR}")
@@ -43,33 +41,6 @@ endif()
 message(STATUS "Using Core from: ${WYVERN_RESOLVED_CORE_DIR}")
 add_subdirectory("${WYVERN_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_core")
 
-set(_wyvern_plugin_runtime_candidates "")
-if(WYVERN_PLUGIN_RUNTIME_DIR)
-  list(APPEND _wyvern_plugin_runtime_candidates "${WYVERN_PLUGIN_RUNTIME_DIR}")
-endif()
-list(APPEND _wyvern_plugin_runtime_candidates
-  "${CMAKE_SOURCE_DIR}/../PluginRuntime"
-  "${CMAKE_SOURCE_DIR}/PluginRuntime"
-)
-
-set(WYVERN_RESOLVED_PLUGIN_RUNTIME_DIR "")
-foreach(_candidate IN LISTS _wyvern_plugin_runtime_candidates)
-  if(EXISTS "${_candidate}/CmakeLists.txt" OR EXISTS "${_candidate}/CMakeLists.txt")
-    set(WYVERN_RESOLVED_PLUGIN_RUNTIME_DIR "${_candidate}")
-    break()
-  endif()
-endforeach()
-
-if(NOT WYVERN_RESOLVED_PLUGIN_RUNTIME_DIR)
-  message(FATAL_ERROR
-    "PluginRuntime was not found. Set WYVERN_PLUGIN_RUNTIME_DIR to external PluginRuntime path "
-    "or keep PluginRuntime as ../PluginRuntime (preferred) / PluginRuntime (fallback)."
-  )
-endif()
-
-message(STATUS "Using PluginRuntime from: ${WYVERN_RESOLVED_PLUGIN_RUNTIME_DIR}")
-add_subdirectory("${WYVERN_RESOLVED_PLUGIN_RUNTIME_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_plugin_runtime")
-
 if(WYVERN_BUILD_FOUNDATION)
   find_package(Boost REQUIRED COMPONENTS system thread program_options)
 
@@ -81,6 +52,7 @@ if(WYVERN_BUILD_FOUNDATION)
 
   target_include_directories(wyvern_server_foundation
     PRIVATE
+      ${CMAKE_SOURCE_DIR}/Server/platform
       ${CMAKE_SOURCE_DIR}/Server/platform/runtime
       ${CMAKE_SOURCE_DIR}/Server/server
       ${CMAKE_SOURCE_DIR}/Server/utils
@@ -89,7 +61,6 @@ if(WYVERN_BUILD_FOUNDATION)
   target_link_libraries(wyvern_server_foundation
     PRIVATE
       EduSpace::Core
-      Wyvern::PluginRuntime
       Boost::system
       Boost::thread
       Boost::program_options

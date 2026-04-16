@@ -11,7 +11,7 @@
 
 namespace core::contracts {
 
-class IAgent : public IModule {
+class IAgent : public virtual IModule {
 public:
     using ActionFactory = std::function<std::unique_ptr<IAction>()>;
 
@@ -19,7 +19,7 @@ public:
 
     virtual OperationStatus registerAction(std::string actionType, ActionFactory factory) = 0;
     virtual OperationStatus unregisterAction(std::string_view actionType) = 0;
-    virtual OperationStatus handle(const IMessage& message) = 0;
+    virtual OperationStatus handleMessage(const IMessage& message) = 0;
 };
 
 } // namespace core::contracts

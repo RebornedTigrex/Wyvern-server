@@ -1,7 +1,7 @@
-﻿#pragma once
+#pragma once
 
 #include "modules/BaseModule.h"
-#include <boost/asio.hpp>
+#include "RequestHandler.h"
 #include <unordered_map>
 #include <chrono>
 #include <mutex>
@@ -19,6 +19,7 @@
 
 class DoSProtectionModule : public BaseModule {
 private:
+    RequestHandler* requestHandler_ = nullptr;
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
     using Duration = Clock::duration;
@@ -59,8 +60,15 @@ private:
     }
 
 public:
-    DoSProtectionModule(const std::string& name = "DoSProtection", const int& id = -1)
-        : BaseModule(name, id), running_(false) {
+    DoSProtectionModule()
+        : BaseModule("DoS Protection"), running_(false) {}
+
+    std::string moduleKey() const override { return "wyvern.dosProtection"; }
+    std::vector<std::string> dependencies() const override { return {"wyvern.requestHandler"}; }
+
+    void onInject(const std::string& depKey, core::contracts::IModule* dep) override {
+        if (depKey == "wyvern.requestHandler")
+            requestHandler_ = dynamic_cast<RequestHandler*>(dep);
     }
 
     ~DoSProtectionModule() {
@@ -74,10 +82,23 @@ public:
 
 protected:
     bool onInitialize() override {
-        // Инициализация: запуск cleanup потока
+        if (!requestHandler_) return false;
         running_ = true;
         cleanup_thread_ = std::thread(&DoSProtectionModule::cleanupLoop, this);
-        return true;
+        return requestHandler_->addMiddleware(
+            moduleKey(),
+            [this](const http::request<http::string_body>&, http::response<http::string_body>& res,
+                   const RequestHandler::RequestFlowContext& flowContext) {
+                if (flowContext.clientIp.empty() || isAllowed(flowContext.clientIp))
+                    return true;
+                res.result(http::status::too_many_requests);
+                res.set(http::field::content_type, "application/json");
+                res.set(http::field::cache_control, "no-cache, must-revalidate");
+                res.body() = R"({"status":"rate_limited"})";
+                return false;
+            },
+            -100
+        );
     }
 
     void onShutdown() override {

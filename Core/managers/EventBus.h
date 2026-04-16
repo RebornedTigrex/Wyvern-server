@@ -1,14 +1,16 @@
-﻿#include <boost/signals2.hpp>
+#pragma once
+
+#include "contracts/IEventBus.h"
+#include <boost/signals2.hpp>
 #include <unordered_map>
 #include <typeindex>
 #include <memory>
 #include <mutex>
 
-class EventBus {
+class EventBus : public core::contracts::IEventBus {
     EventBus() = default;
 
 public:
-
     EventBus(const EventBus&) = delete;
     EventBus& operator=(const EventBus&) = delete;
     EventBus(EventBus&&) = delete;
@@ -19,60 +21,47 @@ public:
         return inst;
     }
 
-    // Подписка на событие типа Event
-    template<typename Event>
-    boost::signals2::connection subscribe(typename boost::signals2::signal<void(const Event&)>::slot_type slot) {
+    // --- IEventBus (type-erased API) ---
+
+    core::contracts::SubscriptionId subscribe(
+        std::type_index eventType,
+        RawHandler handler) override
+    {
         std::lock_guard<std::mutex> lock(m_mutex);
-        auto& signal = getSignal<Event>();
-        return signal->connect(slot);
+        const auto id = m_nextId++;
+        auto& rawSignal = m_rawSignals[eventType];
+        m_connections[id] = rawSignal.connect(std::move(handler));
+        return id;
     }
 
-    // Публикация события типа Event
-    template<typename Event>
-    void publish(const Event& event) {
-        std::shared_ptr<boost::signals2::signal<void(const Event&)>> signal_copy;
+    void unsubscribe(core::contracts::SubscriptionId id) override {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_connections.find(id);
+        if (it != m_connections.end()) {
+            it->second.disconnect();
+            m_connections.erase(it);
+        }
+    }
+
+    void publish(
+        std::type_index eventType,
+        RawEventPtr eventData) override
+    {
+        boost::signals2::signal<void(const RawEventPtr&)> signal_copy;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            auto it = m_signals.find(typeid(Event));
-            if (it != m_signals.end()) {
-                auto holder = std::dynamic_pointer_cast<SignalHolder<Event>>(it->second);
-                if (holder) {
-                    signal_copy = holder->signal;
-                }
-            }
+            auto it = m_rawSignals.find(eventType);
+            if (it == m_rawSignals.end()) return;
+            signal_copy = it->second;
         }
-        if (signal_copy) {
-            (*signal_copy)(event); // вызов всех подписчиков вне блокировки
-        }
+        signal_copy(eventData);
     }
 
 private:
-    // Базовый класс для хранения сигнала любого типа
-    struct SignalHolderBase {
-        virtual ~SignalHolderBase() = default;
-    };
-
-    // Шаблонный класс‑обёртка для конкретного сигнала
-    template<typename Event>
-    struct SignalHolder : SignalHolderBase {
-        std::shared_ptr<boost::signals2::signal<void(const Event&)>> signal =
-            std::make_shared<boost::signals2::signal<void(const Event&)>>();
-    };
-
-    // Получение (или создание) сигнала для типа Event
-    template<typename Event>
-    std::shared_ptr<boost::signals2::signal<void(const Event&)>> getSignal() {
-        auto it = m_signals.find(typeid(Event));
-        if (it != m_signals.end()) {
-            return std::dynamic_pointer_cast<SignalHolder<Event>>(it->second)->signal;
-        }
-        else {
-            auto holder = std::make_shared<SignalHolder<Event>>();
-            m_signals[typeid(Event)] = holder;
-            return holder->signal;
-        }
-    }
-
-    std::unordered_map<std::type_index, std::shared_ptr<SignalHolderBase>> m_signals;
+    std::unordered_map<std::type_index,
+        boost::signals2::signal<void(const RawEventPtr&)>> m_rawSignals;
+    std::unordered_map<core::contracts::SubscriptionId,
+        boost::signals2::connection>                        m_connections;
+    core::contracts::SubscriptionId m_nextId = 1;
     std::mutex m_mutex;
 };

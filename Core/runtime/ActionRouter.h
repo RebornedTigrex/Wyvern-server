@@ -2,8 +2,8 @@
 
 #include "contracts/IMessage.h"
 #include "contracts/Primitives.h"
-#include "interfaces/iAgent.h"
-#include "interfaces/iAction.h"
+#include "contracts/IAgent.h"
+#include "contracts/IAction.h"
 
 #include <memory>
 #include <mutex>
@@ -18,7 +18,7 @@ namespace core::runtime {
 // Регистрирует фабрики действий и лениво создаёт action-instance при первом вызове.
 class ActionRouter {
 public:
-    using ActionFactory = iAgent::tActionFactory;
+    using ActionFactory = core::contracts::IAgent::ActionFactory;
 
     core::contracts::OperationStatus registerAction(std::string actionType, ActionFactory factory) {
         if (actionType.empty()) {
@@ -49,7 +49,7 @@ public:
     }
 
     core::contracts::OperationStatus dispatch(std::string_view actionType, const core::contracts::IMessage& message) {
-        iAction* action = nullptr;
+        core::contracts::IAction* action = nullptr;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = actions_.find(std::string(actionType));
@@ -72,7 +72,7 @@ public:
 private:
     struct ActionEntry {
         ActionFactory factory;
-        std::unique_ptr<iAction> instance;
+        std::unique_ptr<core::contracts::IAction> instance;
     };
 
     std::unordered_map<std::string, ActionEntry> actions_;

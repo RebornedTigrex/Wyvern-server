@@ -47,8 +47,11 @@ private:
 public:
     RequestHandler();
 
-    void setFileCache(FileCache* cache) {
-        file_cache_ = cache;
+    std::string moduleKey() const override { return "wyvern.requestHandler"; }
+    std::vector<std::string> dependencies() const override { return {"wyvern.fileCache"}; }
+    void onInject(const std::string& depKey, core::contracts::IModule* dep) override {
+        if (depKey == "wyvern.fileCache")
+            file_cache_ = dynamic_cast<FileCache*>(dep);
     }
 
     void addDynamicRouteHandler(const std::string& regexPattern, RouteHandler handler);

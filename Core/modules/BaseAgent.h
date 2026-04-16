@@ -1,7 +1,6 @@
 ﻿#pragma once
 
-#include "contracts/Primitives.h"
-#include "interfaces/iAgent.h"
+#include "contracts/IAgent.h"
 #include "modules/BaseModule.h"
 #include "runtime/ActionRouter.h"
 #include "runtime/MessageDispatcher.h"
@@ -10,16 +9,13 @@
 #include <string_view>
 #include <utility>
 
-// Базовая реализация агента:
-// - хранит и маршрутизирует действия через ActionRouter
-// - принимает RoutedMessageEnvelope и делегирует payload в выбранное action
-class BaseAgent : public BaseModule, public iAgent {
+class BaseAgent : public BaseModule, public core::contracts::IAgent {
 public:
-    BaseAgent(const std::string& name, ModuleId id = static_cast<ModuleId>(-1))
-        : BaseModule(name, id) {
-    }
+    BaseAgent(const std::string& name,
+              core::contracts::ModuleId id = static_cast<core::contracts::ModuleId>(-1))
+        : BaseModule(name, id) {}
 
-    core::contracts::OperationStatus registerAction(std::string type, tActionFactory factory) override {
+    core::contracts::OperationStatus registerAction(std::string type, ActionFactory factory) override {
         return actionRouter_.registerAction(std::move(type), std::move(factory));
     }
 

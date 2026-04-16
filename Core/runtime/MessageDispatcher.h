@@ -3,7 +3,7 @@
 #include "contracts/IMessage.h"
 #include "contracts/Primitives.h"
 #include "contracts/TypedMessage.h"
-#include "interfaces/iAgentManager.h"
+#include "contracts/IFeatureManager.h"
 
 #include <memory>
 #include <mutex>
@@ -38,7 +38,7 @@ private:
 // Потокобезопасный диспетчер сообщений: object -> manager.
 class MessageDispatcher {
 public:
-    core::contracts::OperationStatus registerManager(std::string objectType, std::shared_ptr<iAgentManager> manager) {
+    core::contracts::OperationStatus registerManager(std::string objectType, std::shared_ptr<core::contracts::IFeatureManager> manager) {
         if (objectType.empty()) {
             return core::contracts::OperationStatus::failure("Object type must not be empty.");
         }
@@ -61,7 +61,7 @@ public:
     }
 
     core::contracts::OperationStatus dispatch(const core::contracts::MessageRoute& route, const core::contracts::IMessage& message) {
-        std::shared_ptr<iAgentManager> manager;
+        std::shared_ptr<core::contracts::IFeatureManager> manager;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = managers_.find(route.object);
@@ -81,7 +81,7 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, std::weak_ptr<iAgentManager>> managers_;
+    std::unordered_map<std::string, std::weak_ptr<core::contracts::IFeatureManager>> managers_;
     std::mutex mutex_;
 };
 

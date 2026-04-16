@@ -50,6 +50,11 @@ namespace {
 // Конструктор (как оригинал, с вызовом rebuild_file_map)
 FileCache::FileCache(const std::string& base_dir, bool enable_cache, size_t max_cache, int chache_mode)
     : BaseModule("File Cache Module"), fileCacheMode(chache_mode), cache_enabled_(enable_cache), max_cache_size_(max_cache), total_cache_size_(0) {
+    if(base_dir.empty()){
+        std::cout << "FileCache inited with DEV base_dir: Static standart heandlers will be inited.";
+        base_directory_ = NULL;
+        return;
+    }
     base_directory_ = fs::absolute(base_dir);
     if (!fs::exists(base_directory_) || !fs::is_directory(base_directory_)) {
         throw std::runtime_error("Base directory does not exist or is not accessible: " + base_dir);

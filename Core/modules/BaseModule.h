@@ -1,23 +1,37 @@
-﻿#pragma once
-#include "interfaces/iModule.h"
+#pragma once
+#include "contracts/IModule.h"
 #include <atomic>
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
-class BaseModule : public virtual iModule {
+class BaseModule : public virtual core::contracts::IModule {
     enum class ModuleStatus : uint8_t { SUCCESS, DISABLED, MODULE_ERROR };
 
 protected:
+    using ModuleId      = core::contracts::ModuleId;
+    using LifecycleState = core::contracts::LifecycleState;
+
     std::string name_;
+    std::string moduleKey_;
+    std::vector<std::string> dependencies_;
     std::atomic<bool> enabled_;
     std::atomic<bool> initialized_;
     std::atomic<LifecycleState> lifecycleState_;
     ModuleId id_;
 
 public:
-    BaseModule(const std::string& name = "Dev-Name", const ModuleId& id = static_cast<ModuleId>(-1)/*, const std::string& version = "dev"*/)
+    BaseModule(
+        const std::string& name = "Dev-Name",
+        const ModuleId& id = static_cast<ModuleId>(-1),
+        std::string moduleKey = {},
+        std::vector<std::string> dependencies = {}
+    )
         : id_(id),
         name_(name),
+        moduleKey_(moduleKey.empty() ? name : std::move(moduleKey)),
+        dependencies_(std::move(dependencies)),
         enabled_(true),
         initialized_(false),
         lifecycleState_(LifecycleState::Created) {
@@ -28,6 +42,8 @@ public:
     // IModule implementation
     ModuleId getId() const override { return id_; }
     std::string getName() const override { return name_; }
+    std::string moduleKey() const override { return moduleKey_; }
+    std::vector<std::string> dependencies() const override { return dependencies_; }
     bool isEnabled() const override { return enabled_.load(); }
     void setEnabled(bool enabled) override { enabled_.store(enabled); }
     LifecycleState state() const override { return lifecycleState_.load(); }
@@ -66,4 +82,6 @@ protected:
     bool isInitialized() const { return initialized_.load(); }
 
     void setId(ModuleId id) { id_ = id; }
+    void setModuleKey(std::string moduleKey) { moduleKey_ = std::move(moduleKey); }
+    void setDependencies(std::vector<std::string> dependencies) { dependencies_ = std::move(dependencies); }
 };

@@ -45,7 +45,9 @@ private:
     void scan_directory(const fs::path& directory);
 
 public:
-    // FIXED: Вернул оригинальный конструктор с args (rebuild_file_map() внутри)
+    std::string moduleKey() const override { return "wyvern.fileCache"; }
+    std::vector<std::string> dependencies() const override { return {}; }
+
     FileCache(const std::string& base_dir, bool enable_cache = true, size_t max_cache = 100, int chache_mode = Mode::None);
     ~FileCache() = default;
 
