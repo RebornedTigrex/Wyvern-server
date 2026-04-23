@@ -66,7 +66,7 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
     if ($env:WYVERN_BUILD_DIR) {
         $BuildDir = $env:WYVERN_BUILD_DIR
     } else {
-        $BuildDir = Join-Path $PSScriptRoot ("out/build/{0}-foundation" -f $Preset)
+        $BuildDir = Join-Path $PSScriptRoot ("out/build/{0}" -f $Preset)
     }
 }
 if ([string]::IsNullOrWhiteSpace($Target)) {

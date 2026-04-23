@@ -52,7 +52,8 @@ FileCache::FileCache(const std::string& base_dir, bool enable_cache, size_t max_
     : BaseModule("File Cache Module"), fileCacheMode(chache_mode), cache_enabled_(enable_cache), max_cache_size_(max_cache), total_cache_size_(0) {
     if(base_dir.empty()){
         std::cout << "FileCache inited with DEV base_dir: Static standart heandlers will be inited.";
-        base_directory_ = NULL;
+        base_directory_ = "";
+        DEV_mode = true;
         return;
     }
     base_directory_ = fs::absolute(base_dir);
@@ -65,7 +66,7 @@ FileCache::FileCache(const std::string& base_dir, bool enable_cache, size_t max_
 
 // onInitialize (модульный: лог + проверка)
 bool FileCache::onInitialize() {
-    if (route_to_path_.empty()) {
+    if (route_to_path_.empty() && !DEV_mode) {
         std::cerr << "Warning: No routes mapped in FileCache for " << base_directory_ << std::endl;
         return false;
     }
@@ -177,7 +178,7 @@ std::string FileCache::normalize_route(const fs::path& file_path) const {
     std::string filename_lower = filename;
     // Специальная обработка для index файлов
     std::transform(filename_lower.begin(), filename_lower.end(), filename_lower.begin(), ::tolower);
-    if (filename_lower == "index" or filename_lower == "index.html") {
+    if (filename_lower == "index" || filename_lower == "index.html") {
         // Если это index в корне - возвращаем "/"
         if (!relative_path.has_parent_path() || relative_path.parent_path() == ".") {
             return "/";

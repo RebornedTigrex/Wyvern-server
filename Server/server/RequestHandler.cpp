@@ -56,7 +56,7 @@ bool RequestHandler::onInitialize() {
     setupDefaultRoutes();
     std::cout << "RequestHandler initialized with " << routeHandlers_.size() << " routes" << std::endl;
     if (file_cache_) {
-        std::cout << "FileCache linked successfully." << std::endl;  // NEW: Лог для отладки
+        // std::cout << "FileCache linked successfully." << std::endl;  // NEW: Лог для отладки
     }
     return true;
 }

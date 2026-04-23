@@ -50,7 +50,7 @@ private:
                 return;
             }
             res.set(http::field::content_type, "text/plain");
-            res.body() = "RequestHandler Module Scaling Test.\nAlso checking support for the Russian language.";
+            res.body() = "RequestHandler Test.";
             res.result(http::status::ok);
         });
 

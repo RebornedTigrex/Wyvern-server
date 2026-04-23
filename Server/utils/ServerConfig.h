@@ -14,7 +14,7 @@ namespace po = boost::program_options;
 struct ServerConfig {
     std::string address = "0.0.0.0";
     int         port = 8080;
-    std::string directory = "static";
+    std::string directory = "";
 
     // Метод для парсинга и валидации аргументов
     static ServerConfig parse(int argc, char* argv[]) {
@@ -27,7 +27,7 @@ struct ServerConfig {
                 "IP address to listen on")
             ("port,p", po::value<int>(&config.port)->default_value(8080),
                 "Port to listen on")
-            ("directory,d", po::value<std::string>(&config.directory)->default_value("static"),
+            ("directory,d", po::value<std::string>(&config.directory)->default_value(""),
                 "Path to static files directory");
 
         po::variables_map vm;

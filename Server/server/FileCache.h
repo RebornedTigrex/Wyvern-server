@@ -29,6 +29,8 @@ private:
         fs::path file_path;
     };
 
+    bool DEV_mode;
+
     fs::path base_directory_;
     std::unordered_map<std::string, CachedFile> file_cache_;
     std::unordered_map<std::string, std::string> route_to_path_;
