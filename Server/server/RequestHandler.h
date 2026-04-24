@@ -167,6 +167,7 @@ public:
 
 protected:
     bool onInitialize() override;
+    bool onReady() override;
     void onShutdown() override;
 
 private:

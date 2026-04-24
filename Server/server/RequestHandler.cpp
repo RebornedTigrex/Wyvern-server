@@ -54,10 +54,11 @@ bool RequestHandler::addMiddleware(std::string middlewareId, MiddlewareHandler h
 
 bool RequestHandler::onInitialize() {
     setupDefaultRoutes();
-    std::cout << "RequestHandler initialized with " << routeHandlers_.size() << " routes" << std::endl;
-    if (file_cache_) {
-        // std::cout << "FileCache linked successfully." << std::endl;  // NEW: Лог для отладки
-    }
+    return true;
+}
+
+bool RequestHandler::onReady() {
+    std::cout << "RequestHandler ready: " << routeHandlers_.size() << " routes" << std::endl;
     return true;
 }
 

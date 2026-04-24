@@ -247,6 +247,25 @@ public:
         return all_ok;
     }
 
+    bool readyAll() override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        bool all_ok = true;
+        const auto orderedIds = resolveDependencyOrderOrThrow();
+        for (const auto id : orderedIds) {
+            auto it = modules_.find(id);
+            if (it == modules_.end()) {
+                continue;
+            }
+            auto& module = it->second;
+            if (module->isEnabled()) {
+                if (!module->ready()) {
+                    all_ok = false;
+                }
+            }
+        }
+        return all_ok;
+    }
+
     void shutdownAll() override {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto orderedIds = resolveDependencyOrderOrThrow();

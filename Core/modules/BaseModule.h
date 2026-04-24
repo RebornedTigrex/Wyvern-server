@@ -62,6 +62,11 @@ public:
         return result;
     }
 
+    bool ready() override {
+        if (!enabled_ || !initialized_) return false;
+        return onReady();
+    }
+
     void shutdown() override {
         if (initialized_) {
             lifecycleState_.store(LifecycleState::Stopping);
@@ -76,6 +81,7 @@ public:
 protected:
     // Для реализации в наследниках
     virtual bool onInitialize() = 0;
+    virtual bool onReady() { return true; }
     virtual void onShutdown() = 0;
 
     // Вспомогательные методы

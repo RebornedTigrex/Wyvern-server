@@ -28,6 +28,10 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    if (!context.moduleRegistry->readyAll()) {
+        std::cerr << "[main] Some modules are not ready, continuing.\n";
+    }
+
     try {
         context.ioContext.run();
     } catch (const std::exception& e) {

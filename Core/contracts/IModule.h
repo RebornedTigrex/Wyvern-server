@@ -14,6 +14,7 @@ public:
     virtual std::string getName() const = 0;
 
     virtual bool initialize() = 0;
+    virtual bool ready() { return true; }
     virtual void shutdown() = 0;
 
     virtual bool isEnabled() const = 0;
