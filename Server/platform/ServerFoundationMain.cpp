@@ -1,3 +1,4 @@
+﻿#include "Core.h"
 #include "ServerRuntimeContext.h"
 #include "HttpTransportModule.h"
 #include "PlatformRoutesModule.h"
@@ -10,6 +11,12 @@
 using wyvern::platform::runtime::ServerRuntimeContext;
 
 int main(int argc, char* argv[]) {
+    auto core = Core::instance();
+    if (!core->initialize()) {
+        std::cerr << "[main] Core initialization failed.\n";
+        return EXIT_FAILURE;
+    }
+
     ServerRuntimeContext context;
     context.config = ServerConfig::parse(argc, argv);
 
@@ -23,12 +30,13 @@ int main(int argc, char* argv[]) {
         context.config.address,
         static_cast<unsigned short>(context.config.port));
 
-    if (!context.moduleRegistry->initializeAll()) {
+    if (!core->initializeModules()) {
         std::cerr << "[main] Module initialization failed.\n";
+        core->shutdown();
         return EXIT_FAILURE;
     }
 
-    if (!context.moduleRegistry->readyAll()) {
+    if (!core->readyModules()) {
         std::cerr << "[main] Some modules are not ready, continuing.\n";
     }
 
@@ -36,10 +44,10 @@ int main(int argc, char* argv[]) {
         context.ioContext.run();
     } catch (const std::exception& e) {
         std::cerr << "[main] Runtime error: " << e.what() << '\n';
-        context.moduleRegistry->shutdownAll();
+        core->shutdown();
         return EXIT_FAILURE;
     }
 
-    context.moduleRegistry->shutdownAll();
+    core->shutdown();
     return 0;
 }

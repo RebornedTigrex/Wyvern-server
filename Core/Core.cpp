@@ -1,4 +1,4 @@
-#include "Core.h"
+﻿#include "Core.h"
 #include <iostream>
 
 Core::Core() 
@@ -15,7 +15,7 @@ std::shared_ptr<Core> Core::instance() {
 
 bool Core::initialize() {
     if (initialized) {
-        std::cerr << "[Core] Ядро уже инициализировано" << std::endl;
+        std::cerr << "[Core] Core is already initialized" << std::endl;
         return false;
     }
 
@@ -25,20 +25,20 @@ bool Core::initialize() {
         moduleRegistry = ModuleRegistry::instance();
 
         if (!eventBus) {
-            std::cerr << "[Core] Ошибка: не удалось получить EventBus" << std::endl;
+            std::cerr << "[Core] Error: failed to obtain EventBus" << std::endl;
             return false;
         }
 
         if (!moduleRegistry) {
-            std::cerr << "[Core] Ошибка: не удалось получить ModuleRegistry" << std::endl;
+            std::cerr << "[Core] Error: failed to obtain ModuleRegistry" << std::endl;
             return false;
         }
 
         initialized = true;
-        std::cout << "[Core] Ядро успешно инициализировано" << std::endl;
+        std::cout << "[Core] Core initialized successfully" << std::endl;
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Исключение при инициализации: " << e.what() << std::endl;
+        std::cerr << "[Core] Exception during initialization: " << e.what() << std::endl;
         return false;
     }
 }
@@ -49,7 +49,7 @@ bool Core::isInitialized() const {
 
 void Core::shutdown() {
     if (!initialized) {
-        std::cerr << "[Core] Ядро еще не инициализировано" << std::endl;
+        std::cerr << "[Core] Core is not initialized yet" << std::endl;
         return;
     }
 
@@ -62,48 +62,74 @@ void Core::shutdown() {
         moduleRegistry = nullptr;
         initialized = false;
         
-        std::cout << "[Core] Ядро успешно выключено" << std::endl;
+        std::cout << "[Core] Core shut down successfully" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Исключение при выключении: " << e.what() << std::endl;
+        std::cerr << "[Core] Exception during shutdown: " << e.what() << std::endl;
     }
 }
 
 std::shared_ptr<EventBus> Core::getEventBus() const {
     if (!initialized) {
-        std::cerr << "[Core] Предупреждение: явный запрос EventBus до инициализации ядра" << std::endl;
+        std::cerr << "[Core] Warning: explicit EventBus request before core initialization" << std::endl;
     }
     return eventBus;
 }
 
 std::shared_ptr<ModuleRegistry> Core::getModuleRegistry() const {
     if (!initialized) {
-        std::cerr << "[Core] Предупреждение: явный запрос ModuleRegistry до инициализации ядра" << std::endl;
+        std::cerr << "[Core] Warning: explicit ModuleRegistry request before core initialization" << std::endl;
     }
     return moduleRegistry;
 }
 
 bool Core::initializeModules() {
     if (!initialized) {
-        std::cerr << "[Core] Ошибка: ядро не инициализировано, невозможно инициализировать модули" << std::endl;
+        std::cerr << "[Core] Error: core is not initialized, cannot initialize modules" << std::endl;
         return false;
     }
 
     if (!moduleRegistry) {
-        std::cerr << "[Core] Ошибка: ModuleRegistry недоступен" << std::endl;
+        std::cerr << "[Core] Error: ModuleRegistry is unavailable" << std::endl;
         return false;
     }
 
     try {
-        std::cout << "[Core] Инициализация модулей..." << std::endl;
+        std::cout << "[Core] Initializing modules..." << std::endl;
         bool result = moduleRegistry->initializeAll();
         if (result) {
-            std::cout << "[Core] Все модули успешно инициализированы" << std::endl;
+            std::cout << "[Core] All modules initialized successfully" << std::endl;
         } else {
-            std::cerr << "[Core] Некоторые модули не удалось инициализировать" << std::endl;
+            std::cerr << "[Core] Some modules failed to initialize" << std::endl;
         }
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Исключение при инициализации модулей: " << e.what() << std::endl;
+        std::cerr << "[Core] Exception during module initialization: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool Core::readyModules() {
+    if (!initialized) {
+        std::cerr << "[Core] Error: core is not initialized, cannot check module readiness" << std::endl;
+        return false;
+    }
+
+    if (!moduleRegistry) {
+        std::cerr << "[Core] Error: ModuleRegistry is unavailable" << std::endl;
+        return false;
+    }
+
+    try {
+        std::cout << "[Core] Checking module readiness..." << std::endl;
+        bool result = moduleRegistry->readyAll();
+        if (result) {
+            std::cout << "[Core] All modules are ready" << std::endl;
+        } else {
+            std::cerr << "[Core] Some modules are not ready" << std::endl;
+        }
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[Core] Exception during module readiness check: " << e.what() << std::endl;
         return false;
     }
 }
@@ -114,26 +140,26 @@ void Core::shutdownModules() {
     }
 
     try {
-        std::cout << "[Core] Выключение модулей..." << std::endl;
+        std::cout << "[Core] Shutting down modules..." << std::endl;
         moduleRegistry->shutdownAll();
-        std::cout << "[Core] Все модули выключены" << std::endl;
+        std::cout << "[Core] All modules shut down" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Исключение при выключении модулей: " << e.what() << std::endl;
+        std::cerr << "[Core] Exception during module shutdown: " << e.what() << std::endl;
     }
 }
 
 std::string Core::getStatus() const {
     std::string status;
     
-    status += "=== Статус ядра ===\n";
-    status += "Инициализировано: " + std::string(initialized ? "да" : "нет") + "\n";
+    status += "=== Core Status ===\n";
+    status += "Initialized: " + std::string(initialized ? "yes" : "no") + "\n";
     
     if (initialized && moduleRegistry) {
-        status += "Зарегистрировано модулей: " + std::to_string(moduleRegistry->size()) + "\n";
+        status += "Registered modules: " + std::to_string(moduleRegistry->size()) + "\n";
     }
     
-    status += "EventBus: " + std::string(eventBus ? "доступна" : "не доступна") + "\n";
-    status += "ModuleRegistry: " + std::string(moduleRegistry ? "доступна" : "не доступна") + "\n";
+    status += "EventBus: " + std::string(eventBus ? "available" : "unavailable") + "\n";
+    status += "ModuleRegistry: " + std::string(moduleRegistry ? "available" : "unavailable") + "\n";
     
     return status;
 }

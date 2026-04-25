@@ -47,14 +47,12 @@ public:
         std::type_index eventType,
         RawEventPtr eventData) override
     {
-        boost::signals2::signal<void(const RawEventPtr&)> signal_copy;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            auto it = m_rawSignals.find(eventType);
-            if (it == m_rawSignals.end()) return;
-            signal_copy = it->second;
-        }
-        signal_copy(eventData);
+        // boost::signals2::signal не копируем и не move-assignable,
+        // поэтому вызываем слоты под тем же мьютексом.
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_rawSignals.find(eventType);
+        if (it == m_rawSignals.end()) return;
+        it->second(eventData);
     }
 
 private:

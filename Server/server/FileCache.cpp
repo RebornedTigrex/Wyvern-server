@@ -51,7 +51,7 @@ namespace {
 FileCache::FileCache(const std::string& base_dir, bool enable_cache, size_t max_cache, int chache_mode)
     : BaseModule("File Cache Module"), fileCacheMode(chache_mode), cache_enabled_(enable_cache), max_cache_size_(max_cache), total_cache_size_(0) {
     if(base_dir.empty()){
-        std::cout << "FileCache inited with DEV base_dir: Static standart heandlers will be inited.";
+        std::cout << "FileCache inited with DEV base_dir: Static standart heandlers will be inited." << std::endl;
         base_directory_ = "";
         DEV_mode = true;
         return;

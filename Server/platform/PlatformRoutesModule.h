@@ -54,6 +54,6 @@ private:
             res.result(http::status::ok);
         });
 
-        requestHandler_->addRouteHandler("/*", [](const Request&, Response&) {});
+        // requestHandler_->addRouteHandler("/*", [](const Request&, Response&) {});
     }
 };

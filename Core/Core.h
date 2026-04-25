@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <memory>
 #include <managers/EventBus.h>
@@ -73,6 +73,12 @@ public:
      * @return true если все модули инициализированы успешно
      */
     bool initializeModules();
+
+    /**
+     * @brief Проверить готовность всех зарегистрированных модулей (ready phase)
+     * @return true если все модули успешно перешли в ready состояние
+     */
+    bool readyModules();
 
     /**
      * @brief Завершить работу всех модулей

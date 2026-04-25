@@ -60,7 +60,7 @@ if(WYVERN_BUILD_FOUNDATION)
 
   target_link_libraries(wyvern_server_foundation
     PRIVATE
-      EduSpace::Core
+      WyvernCore
       Boost::system
       Boost::thread
       Boost::program_options
