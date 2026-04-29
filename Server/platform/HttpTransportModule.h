@@ -1,12 +1,14 @@
 #pragma once
 
 #include "modules/BaseModule.h"
+#include "runtime/ConfigSection.h"
 #include "RequestHandler.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/json.hpp>
 
 #include <iostream>
 #include <memory>
@@ -93,15 +95,21 @@ private:
 // ---------------------------------------------------------------------------
 class HttpTransportModule : public BaseModule {
 public:
-    HttpTransportModule(net::io_context& ioContext,
-                        const std::string& address,
-                        unsigned short port)
+    static std::string moduleType() { return "wyvern.httpTransport"; }
+    static boost::json::object defaults() {
+        boost::json::object obj;
+        obj["address"] = "0.0.0.0";
+        obj["port"] = 8080;
+        return obj;
+    }
+
+    HttpTransportModule(const core::runtime::ConfigSection& cfg, net::io_context& ioContext)
         : BaseModule("HTTP Transport")
         , ioContext_(ioContext)
-        , address_(address)
-        , port_(port) {}
+        , address_(cfg.value<std::string>("address", "0.0.0.0"))
+        , port_(static_cast<unsigned short>(cfg.value<int>("port", 8080))) {}
 
-    std::string moduleKey() const override { return "wyvern.httpTransport"; }
+    std::string moduleKey() const override { return moduleType(); }
     std::vector<std::string> dependencies() const override { return {"wyvern.requestHandler"}; }
 
     void onInject(const std::string& depKey, core::contracts::IModule* dep) override {

@@ -1,93 +1,93 @@
 ﻿#pragma once
 
+#include <filesystem>
 #include <memory>
+
+#include <boost/asio/io_context.hpp>
+
+#include <managers/ConfigStore.h>
 #include <managers/EventBus.h>
 #include <managers/ModuleRegistry.h>
+#include <runtime/ConfigSection.h>
+#include <runtime/RuntimeServices.h>
 
 /**
  * @class Core
- * @brief Ядро приложения - стартовый скрипт для инициализации и управления базовыми компонентами
- * 
- * Предоставляет единый API для инициализации и доступа к:
- * - EventBus (шина событий для межкомпонентного взаимодействия)
- * - ModuleRegistry (реестр модулей для управления жизненным циклом)
- * 
- * Использует Singleton паттерн для гарантирования единственного экземпляра во всем приложении.
+ * @brief Ядро приложения. Владеет EventBus, ModuleRegistry, ConfigStore и RuntimeServices.
+ *
+ * Singleton-обёртка над базовыми компонентами. После `bootstrap()` модулям доступны
+ * их конфиг-секции (`moduleConfig<T>()`) и общий `io_context` (`ioContext()`).
  */
 class Core {
 private:
-    // Приватный конструктор для Singleton
     Core();
 
-    // Удаляем копирование и перемещение
     Core(const Core&) = delete;
     Core& operator=(const Core&) = delete;
     Core(Core&&) = delete;
     Core& operator=(Core&&) = delete;
 
-    // Компоненты ядра
     std::shared_ptr<EventBus> eventBus;
     std::shared_ptr<ModuleRegistry> moduleRegistry;
+    std::unique_ptr<core::managers::ConfigStore> configStore;
+    std::unique_ptr<core::runtime::RuntimeServices> runtimeServices;
+    std::filesystem::path configPath;
     bool initialized = false;
+    bool bootstrapped = false;
 
 public:
     ~Core() = default;
 
     /**
-     * @brief Получить единственный экземпляр Core (Singleton)
-     * @return Ссылка на экземпляр Core
+     * @brief Получить единственный экземпляр Core (Singleton).
      */
     static std::shared_ptr<Core> instance();
 
     /**
-     * @brief Инициализировать ядро (создать и подготовить компоненты)
-     * @return true если инициализация успешна, false в противном случае
+     * @brief Инициализировать ядро (EventBus + ModuleRegistry).
      */
     bool initialize();
 
-    /**
-     * @brief Проверить, инициализировано ли ядро
-     * @return true если инициализировано, false иначе
-     */
     bool isInitialized() const;
 
     /**
-     * @brief Завершить работу ядра (отключить и очистить компоненты)
+     * @brief Полный bootstrap: парсит CLI (--config|-c), грузит конфиг,
+     *        создаёт RuntimeServices (включая io_context).
+     *        При первом обращении вызывает initialize().
      */
+    bool bootstrap(int argc, char** argv);
+
+    /**
+     * @brief io_context, на котором работают все асинхронные модули.
+     *        Доступен только после успешного bootstrap().
+     */
+    boost::asio::io_context& ioContext();
+
+    /**
+     * @brief Возвращает секцию конфига для модуля T.
+     *        Использует T::moduleType() как ключ и T::defaults() как набор
+     *        значений по умолчанию для deep-merge.
+     *        При отсутствии полей помечает store как dirty (commitConfig запишет).
+     */
+    template <typename T>
+    core::runtime::ConfigSection moduleConfig() {
+        return configStore->moduleConfig(T::moduleType(), T::defaults());
+    }
+
+    /**
+     * @brief Записывает текущее состояние ConfigStore обратно в файл,
+     *        если были добавлены дефолты. No-op, если ничего не менялось.
+     */
+    void commitConfig();
+
     void shutdown();
 
-    /**
-     * @brief Получить EventBus (шину событий)
-     * @return Ссылка на EventBus
-     */
     std::shared_ptr<EventBus> getEventBus() const;
-
-    /**
-     * @brief Получить ModuleRegistry (реестр модулей)
-     * @return Ссылка на ModuleRegistry
-     */
     std::shared_ptr<ModuleRegistry> getModuleRegistry() const;
 
-    /**
-     * @brief Инициализировать все зарегистрированные модули
-     * @return true если все модули инициализированы успешно
-     */
     bool initializeModules();
-
-    /**
-     * @brief Проверить готовность всех зарегистрированных модулей (ready phase)
-     * @return true если все модули успешно перешли в ready состояние
-     */
     bool readyModules();
-
-    /**
-     * @brief Завершить работу всех модулей
-     */
     void shutdownModules();
 
-    /**
-     * @brief Получить состояние системы
-     * @return Строка с информацией о состоянии
-     */
     std::string getStatus() const;
 };

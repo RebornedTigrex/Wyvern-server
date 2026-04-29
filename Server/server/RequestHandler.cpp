@@ -1,7 +1,7 @@
 ﻿#include "RequestHandler.h"
 #include <iostream>
 
-RequestHandler::RequestHandler()
+RequestHandler::RequestHandler(const core::runtime::ConfigSection& /*cfg*/)
     : BaseModule("HTTP Request Handler") {
 }
 

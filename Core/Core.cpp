@@ -1,11 +1,58 @@
 ﻿#include "Core.h"
-#include <iostream>
 
-Core::Core() 
-    : eventBus(nullptr), 
-      moduleRegistry(nullptr), 
-      initialized(false) {
-    // Ядро создано, но не инициализировано
+#include <iostream>
+#include <string>
+#include <string_view>
+
+namespace {
+
+constexpr std::string_view kUsage =
+    "usage: [--config|-c <path>]\n";
+
+// Прстейший разбор `--config <path>`, `--config=path`, `-c <path>`.
+// При неизвестном флаге печатает usage в stderr и возвращает false.
+bool parseCli(int argc, char** argv, std::filesystem::path& outConfig) {
+    static const std::filesystem::path defaultPath = "wyvern.config.json";
+    outConfig = defaultPath;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg(argv[i]);
+
+        if (arg == "--config" || arg == "-c") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: " << arg << " expects a path\n" << kUsage;
+                return false;
+            }
+            outConfig = argv[++i];
+            continue;
+        }
+
+        constexpr std::string_view kConfigEq = "--config=";
+        if (arg.substr(0, kConfigEq.size()) == kConfigEq) {
+            outConfig = std::string(arg.substr(kConfigEq.size()));
+            continue;
+        }
+
+        if (arg == "--help" || arg == "-h") {
+            std::cout << kUsage;
+            return false;
+        }
+
+        std::cerr << "error: unknown argument '" << arg << "'\n" << kUsage;
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+Core::Core()
+    : eventBus(nullptr),
+      moduleRegistry(nullptr),
+      configStore(nullptr),
+      runtimeServices(nullptr),
+      initialized(false),
+      bootstrapped(false) {
 }
 
 std::shared_ptr<Core> Core::instance() {
@@ -15,31 +62,78 @@ std::shared_ptr<Core> Core::instance() {
 
 bool Core::initialize() {
     if (initialized) {
-        std::cerr << "[Core] Core is already initialized" << std::endl;
+        std::cerr << "[Core] already initialized\n";
         return false;
     }
 
     try {
-        // Получаем Singleton экземпляры компонентов
         eventBus = EventBus::instance();
         moduleRegistry = ModuleRegistry::instance();
 
         if (!eventBus) {
-            std::cerr << "[Core] Error: failed to obtain EventBus" << std::endl;
+            std::cerr << "[Core] failed to obtain EventBus\n";
             return false;
         }
 
         if (!moduleRegistry) {
-            std::cerr << "[Core] Error: failed to obtain ModuleRegistry" << std::endl;
+            std::cerr << "[Core] failed to obtain ModuleRegistry\n";
             return false;
         }
 
         initialized = true;
-        std::cout << "[Core] Core initialized successfully" << std::endl;
+        std::cout << "[Core] initialized\n";
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Exception during initialization: " << e.what() << std::endl;
+        std::cerr << "[Core] initialize exception: " << e.what() << '\n';
         return false;
+    }
+}
+
+bool Core::bootstrap(int argc, char** argv) {
+    if (bootstrapped) {
+        std::cerr << "[Core] already bootstrapped\n";
+        return false;
+    }
+    if (!initialized && !initialize()) {
+        return false;
+    }
+
+    if (!parseCli(argc, argv, configPath)) {
+        return false;
+    }
+
+    configStore = std::make_unique<core::managers::ConfigStore>();
+    try {
+        configStore->load(configPath);
+    } catch (const std::exception& e) {
+        std::cerr << "[Core] config load failed: " << e.what() << '\n';
+        return false;
+    }
+
+    runtimeServices = std::make_unique<core::runtime::RuntimeServices>();
+    bootstrapped = true;
+
+    std::cout << "[Core] bootstrap complete (config: " << configPath.string()
+              << (configStore->hasFile() ? " [loaded]" : " [will be created]")
+              << ")\n";
+    return true;
+}
+
+boost::asio::io_context& Core::ioContext() {
+    if (!runtimeServices) {
+        throw std::runtime_error("Core::ioContext() called before bootstrap()");
+    }
+    return runtimeServices->ioContext;
+}
+
+void Core::commitConfig() {
+    if (!configStore || configPath.empty()) {
+        return;
+    }
+    try {
+        configStore->commit(configPath);
+    } catch (const std::exception& e) {
+        std::cerr << "[Core] commitConfig failed: " << e.what() << '\n';
     }
 }
 
@@ -49,35 +143,36 @@ bool Core::isInitialized() const {
 
 void Core::shutdown() {
     if (!initialized) {
-        std::cerr << "[Core] Core is not initialized yet" << std::endl;
+        std::cerr << "[Core] not initialized\n";
         return;
     }
 
     try {
-        // Выключаем модули
         shutdownModules();
-        
-        // Очищаем компоненты
+        runtimeServices.reset();
+        configStore.reset();
+        configPath.clear();
         eventBus = nullptr;
         moduleRegistry = nullptr;
         initialized = false;
-        
-        std::cout << "[Core] Core shut down successfully" << std::endl;
+        bootstrapped = false;
+
+        std::cout << "[Core] shut down\n";
     } catch (const std::exception& e) {
-        std::cerr << "[Core] Exception during shutdown: " << e.what() << std::endl;
+        std::cerr << "[Core] shutdown exception: " << e.what() << '\n';
     }
 }
 
 std::shared_ptr<EventBus> Core::getEventBus() const {
     if (!initialized) {
-        std::cerr << "[Core] Warning: explicit EventBus request before core initialization" << std::endl;
+        std::cerr << "[Core] Warning: EventBus requested before initialize()\n";
     }
     return eventBus;
 }
 
 std::shared_ptr<ModuleRegistry> Core::getModuleRegistry() const {
     if (!initialized) {
-        std::cerr << "[Core] Warning: explicit ModuleRegistry request before core initialization" << std::endl;
+        std::cerr << "[Core] Warning: ModuleRegistry requested before initialize()\n";
     }
     return moduleRegistry;
 }

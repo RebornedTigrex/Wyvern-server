@@ -1,12 +1,18 @@
 #pragma once
 #include "modules/BaseModule.h"
+#include "runtime/ConfigSection.h"
 #include "RequestHandler.h"
+#include <boost/json.hpp>
 
 class PlatformRoutesModule : public BaseModule {
 public:
-    PlatformRoutesModule() : BaseModule("Platform Routes") {}
+    static std::string moduleType() { return "wyvern.platformRoutes"; }
+    static boost::json::object defaults() { return {}; }
 
-    std::string moduleKey() const override { return "wyvern.platformRoutes"; }
+    explicit PlatformRoutesModule(const core::runtime::ConfigSection& /*cfg*/)
+        : BaseModule("Platform Routes") {}
+
+    std::string moduleKey() const override { return moduleType(); }
     std::vector<std::string> dependencies() const override { return {"wyvern.requestHandler"}; }
 
     void onInject(const std::string& depKey, core::contracts::IModule* dep) override {

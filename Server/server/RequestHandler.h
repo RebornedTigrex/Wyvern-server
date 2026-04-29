@@ -1,9 +1,11 @@
 #pragma once
 
 #include "modules/BaseModule.h"
+#include "runtime/ConfigSection.h"
 #include "FileCache.h"
 
 #include <boost/beast/http.hpp>
+#include <boost/json.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -45,9 +47,12 @@ private:
     }
 
 public:
-    RequestHandler();
+    static std::string moduleType() { return "wyvern.requestHandler"; }
+    static boost::json::object defaults() { return {}; }
 
-    std::string moduleKey() const override { return "wyvern.requestHandler"; }
+    explicit RequestHandler(const core::runtime::ConfigSection& cfg);
+
+    std::string moduleKey() const override { return moduleType(); }
     std::vector<std::string> dependencies() const override { return {"wyvern.fileCache"}; }
     void onInject(const std::string& depKey, core::contracts::IModule* dep) override {
         if (depKey == "wyvern.fileCache")

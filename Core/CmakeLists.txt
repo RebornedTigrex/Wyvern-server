@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(WyvernCore LANGUAGES CXX)
 
-# Core зависит от Boost.Signals2 (header-only) через managers/EventBus.h
-if(NOT TARGET Boost::headers)
-  find_package(Boost REQUIRED)
-endif()
+# Core зависит:
+# - Boost.Signals2 (header-only) через managers/EventBus.h
+# - Boost.Json — парсер конфига в ConfigStore
+# - Boost.Asio и Boost.System/Thread — io_context в RuntimeServices
+find_package(Boost REQUIRED COMPONENTS json system thread)
 
 add_library(WyvernCore STATIC
   Core.cpp
+  managers/ConfigStore.cpp
 )
 
 target_compile_features(WyvernCore PUBLIC cxx_std_20)
@@ -18,4 +20,13 @@ target_include_directories(WyvernCore
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
 )
 
-target_link_libraries(WyvernCore PUBLIC Boost::headers)
+target_link_libraries(WyvernCore PUBLIC
+  Boost::headers
+  Boost::json
+  Boost::system
+  Boost::thread
+)
+
+if(WIN32)
+  target_compile_definitions(WyvernCore PUBLIC _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()

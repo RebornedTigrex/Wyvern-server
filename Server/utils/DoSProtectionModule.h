@@ -1,7 +1,9 @@
 #pragma once
 
 #include "modules/BaseModule.h"
+#include "runtime/ConfigSection.h"
 #include "RequestHandler.h"
+#include <boost/json.hpp>
 #include <unordered_map>
 #include <chrono>
 #include <mutex>
@@ -35,11 +37,11 @@ private:
     std::thread cleanup_thread_; // Для периодической очистки
     std::atomic<bool> running_; // Флаг для остановки cleanup
 
-    // Настройки (можно вынести в конфиг в будущем)
-    const int max_requests_per_minute_ = 100; // Порог запросов в минуту
-    const Duration window_duration_ = std::chrono::minutes(1);
-    const Duration ban_duration_ = std::chrono::minutes(5);
-    const Duration cleanup_interval_ = std::chrono::minutes(10);
+    // Настройки приходят из ConfigSection.
+    int max_requests_per_minute_;
+    Duration window_duration_;
+    Duration ban_duration_;
+    Duration cleanup_interval_;
 
     void cleanupLoop() {
         while (running_) {
@@ -60,10 +62,25 @@ private:
     }
 
 public:
-    DoSProtectionModule()
-        : BaseModule("DoS Protection"), running_(false) {}
+    static std::string moduleType() { return "wyvern.dosProtection"; }
+    static boost::json::object defaults() {
+        boost::json::object obj;
+        obj["maxRequestsPerMinute"] = 100;
+        obj["windowDurationMinutes"] = 1;
+        obj["banDurationMinutes"] = 5;
+        obj["cleanupIntervalMinutes"] = 10;
+        return obj;
+    }
 
-    std::string moduleKey() const override { return "wyvern.dosProtection"; }
+    explicit DoSProtectionModule(const core::runtime::ConfigSection& cfg)
+        : BaseModule("DoS Protection"),
+          running_(false),
+          max_requests_per_minute_(cfg.value<int>("maxRequestsPerMinute", 100)),
+          window_duration_(std::chrono::minutes(cfg.value<int>("windowDurationMinutes", 1))),
+          ban_duration_(std::chrono::minutes(cfg.value<int>("banDurationMinutes", 5))),
+          cleanup_interval_(std::chrono::minutes(cfg.value<int>("cleanupIntervalMinutes", 10))) {}
+
+    std::string moduleKey() const override { return moduleType(); }
     std::vector<std::string> dependencies() const override { return {"wyvern.requestHandler"}; }
 
     void onInject(const std::string& depKey, core::contracts::IModule* dep) override {

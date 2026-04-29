@@ -2,7 +2,6 @@
 
 #include <boost/beast/http.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/program_options.hpp>
 #include <filesystem>
 
 
@@ -15,7 +14,6 @@ using sRequest = boost::beast::http::request<string_body>;
 using fResponce = boost::beast::http::response<file_body>;
 using sResponce = boost::beast::http::response<string_body>;
 
-namespace po = boost::program_options;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 namespace fs = std::filesystem;

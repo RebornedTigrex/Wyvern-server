@@ -1,5 +1,7 @@
-﻿#pragma once
+#pragma once
 #include "modules/BaseModule.h"  // Наследование от BaseModule
+#include "runtime/ConfigSection.h"
+#include <boost/json.hpp>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -29,7 +31,7 @@ private:
         fs::path file_path;
     };
 
-    bool DEV_mode;
+    bool DEV_mode = false;
 
     fs::path base_directory_;
     std::unordered_map<std::string, CachedFile> file_cache_;
@@ -47,10 +49,20 @@ private:
     void scan_directory(const fs::path& directory);
 
 public:
-    std::string moduleKey() const override { return "wyvern.fileCache"; }
+    static std::string moduleType() { return "wyvern.fileCache"; }
+    static boost::json::object defaults() {
+        boost::json::object obj;
+        obj["directory"] = "";
+        obj["enableCache"] = true;
+        obj["maxCache"] = 100;
+        obj["cacheMode"] = 0;
+        return obj;
+    }
+
+    std::string moduleKey() const override { return moduleType(); }
     std::vector<std::string> dependencies() const override { return {}; }
 
-    FileCache(const std::string& base_dir, bool enable_cache = true, size_t max_cache = 100, int chache_mode = Mode::None);
+    explicit FileCache(const core::runtime::ConfigSection& cfg);
     ~FileCache() = default;
 
     // Запрещаем копирование/перемещение

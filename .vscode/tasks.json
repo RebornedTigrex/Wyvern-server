@@ -20,6 +20,18 @@
 			},
 			"problemMatcher": [],
 			"detail": "Очистка и полная сборка проекта через build.ps1."
+		},
+		{
+			"type": "cmake",
+			"label": "CMake: очистка перестроения",
+			"command": "cleanRebuild",
+			"targets": [
+				"all"
+			],
+			"preset": "x64-debug",
+			"group": "build",
+			"problemMatcher": [],
+			"detail": "Задача шаблона CMake очистка перестроения"
 		}
 	]
 }

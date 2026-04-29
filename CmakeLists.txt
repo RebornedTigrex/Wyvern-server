@@ -42,10 +42,11 @@ message(STATUS "Using Core from: ${WYVERN_RESOLVED_CORE_DIR}")
 add_subdirectory("${WYVERN_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_core")
 
 if(WYVERN_BUILD_FOUNDATION)
-  find_package(Boost REQUIRED COMPONENTS system thread program_options)
+  find_package(Boost REQUIRED COMPONENTS system thread)
 
   add_executable(wyvern_server_foundation
     Server/platform/ServerFoundationMain.cpp
+    Server/platform/PlatformModules.cpp
     Server/server/FileCache.cpp
     Server/server/RequestHandler.cpp
   )
@@ -53,7 +54,6 @@ if(WYVERN_BUILD_FOUNDATION)
   target_include_directories(wyvern_server_foundation
     PRIVATE
       ${CMAKE_SOURCE_DIR}/Server/platform
-      ${CMAKE_SOURCE_DIR}/Server/platform/runtime
       ${CMAKE_SOURCE_DIR}/Server/server
       ${CMAKE_SOURCE_DIR}/Server/utils
   )
@@ -63,7 +63,6 @@ if(WYVERN_BUILD_FOUNDATION)
       WyvernCore
       Boost::system
       Boost::thread
-      Boost::program_options
   )
 
   if(WIN32)
