@@ -32,6 +32,13 @@
 			"group": "build",
 			"problemMatcher": [],
 			"detail": "Задача шаблона CMake очистка перестроения"
+		},
+		{
+			"type": "cmake",
+			"label": "CMake: настроить",
+			"command": "configure",
+			"problemMatcher": [],
+			"detail": "Задача шаблона CMake настроить"
 		}
 	]
 }
