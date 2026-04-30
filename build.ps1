@@ -189,12 +189,15 @@ Import-MsvcEnvironment -VsDevCmdPath $vsDevCmd
 $env:VCPKG_ROOT = $resolvedVcpkgRoot
 Write-Host "Re-applied VCPKG_ROOT after VsDevCmd: $env:VCPKG_ROOT"
 
+$env:VCPKG_TOOLCHAIN_FILE = $env:VCPKG_ROOT + "\scripts\buildsystems\vcpkg.cmake"
+
 if (-not $BuildOnly) {
     $configureArgs = @(
         "-Wno-dev",
         "--preset", $Preset,
         "-S", $SourceDir,
         "-B", $BuildDir,
+        "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_TOOLCHAIN_FILE"
         "-DWYVERN_BUILD_FOUNDATION=$BuildFoundation"
     )
     Invoke-External -Exe "cmake" -Args $configureArgs
