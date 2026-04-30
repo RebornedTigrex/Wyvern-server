@@ -45,18 +45,20 @@ if(WYVERN_BUILD_FOUNDATION)
   find_package(Boost REQUIRED COMPONENTS system thread)
 
   add_executable(wyvern_server_foundation
-    Server/platform/ServerFoundationMain.cpp
-    Server/platform/PlatformModules.cpp
-    Server/server/FileCache.cpp
-    Server/server/RequestHandler.cpp
+    Application/platform/ServerFoundationMain.cpp
+    Application/platform/PlatformModules.cpp
+    Application/modules/httpServerLegasy/FileCache.cpp
+    Application/modules/httpServerLegasy/RequestHandler.cpp
+    Application/modules/Transport/udp/udpLoopbackTest.cpp
   )
 
   target_include_directories(wyvern_server_foundation
     PRIVATE
-      ${CMAKE_SOURCE_DIR}/Server/platform
-      ${CMAKE_SOURCE_DIR}/Server/server
-      ${CMAKE_SOURCE_DIR}/Server/utils
-      ${CMAKE_SOURCE_DIR}/Server/modules/Transport
+      ${CMAKE_SOURCE_DIR}/Application/platform
+      ${CMAKE_SOURCE_DIR}/Application/modules/httpServerLegasy
+      ${CMAKE_SOURCE_DIR}/Application/modules/httpServerLegasy/addons
+      ${CMAKE_SOURCE_DIR}/Application/modules/httpServerLegasy/support
+      ${CMAKE_SOURCE_DIR}/Application/modules/Transport
   )
 
   target_link_libraries(wyvern_server_foundation

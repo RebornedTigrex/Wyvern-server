@@ -304,8 +304,8 @@ node_modules/
 **/*.HTMLClient/GeneratedArtifacts
 **/*.DesktopClient/GeneratedArtifacts
 **/*.DesktopClient/ModelManifest.xml
-**/*.Server/GeneratedArtifacts
-**/*.Server/ModelManifest.xml
+**/*.Application/GeneratedArtifacts
+**/*.Application/ModelManifest.xml
 _Pvt_Extensions
 
 # Paket dependency manager

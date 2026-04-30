@@ -7,7 +7,7 @@
 #include "DoSProtectionModule.h"
 #include "PlatformRoutesModule.h"
 #include "HttpTransportModule.h"
-#include "udpTransportModule.h"
+#include "udp/udpTransportModule.h"
 
 void registerWyvernPlatform(Core& core) {
     auto& reg = *core.getModuleRegistry();
