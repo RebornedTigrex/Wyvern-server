@@ -4,11 +4,12 @@
 #include "runtime/ConfigSection.h"
 #include "RequestHandler.h"
 #include <boost/json.hpp>
-#include <unordered_map>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <atomic>
+#include <unordered_map>
 
 // Простой модуль для защиты от DoS-атак на основе rate limiting по IP.
 // Алгоритм:
@@ -37,6 +38,12 @@ private:
     std::thread cleanup_thread_; // Для периодической очистки
     std::atomic<bool> running_; // Флаг для остановки cleanup
 
+    // Отдельный mutex+CV под управление сном cleanup-потока. Без них
+    // shutdown ждал бы полный cleanup_interval (минуты), потому что
+    // sleep_for прерывать нельзя.
+    std::mutex shutdown_mutex_;
+    std::condition_variable shutdown_cv_;
+
     // Настройки приходят из ConfigSection.
     int max_requests_per_minute_;
     Duration window_duration_;
@@ -57,7 +64,11 @@ private:
                     }
                 }
             }
-            std::this_thread::sleep_for(cleanup_interval_);
+            // Прерываемое ожидание: shutdown сразу будит через notify_all.
+            std::unique_lock<std::mutex> lock(shutdown_mutex_);
+            shutdown_cv_.wait_for(lock, cleanup_interval_, [this]() {
+                return !running_.load();
+            });
         }
     }
 
@@ -90,7 +101,11 @@ public:
 
     ~DoSProtectionModule() {
         if (running_) {
-            running_ = false;
+            {
+                std::lock_guard<std::mutex> lock(shutdown_mutex_);
+                running_ = false;
+            }
+            shutdown_cv_.notify_all();
             if (cleanup_thread_.joinable()) {
                 cleanup_thread_.join();
             }
@@ -119,8 +134,13 @@ protected:
     }
 
     void onShutdown() override {
-        // Остановка cleanup потока
-        running_ = false;
+        // Остановка cleanup потока: ставим флаг под мьютексом и пинаем CV,
+        // чтобы выйти из текущего wait_for немедленно (а не ждать минуты).
+        {
+            std::lock_guard<std::mutex> lock(shutdown_mutex_);
+            running_ = false;
+        }
+        shutdown_cv_.notify_all();
         if (cleanup_thread_.joinable()) {
             cleanup_thread_.join();
         }
