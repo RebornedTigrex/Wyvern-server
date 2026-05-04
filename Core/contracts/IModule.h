@@ -26,6 +26,15 @@ public:
     // Вызывается registry автоматически для каждой зависимости из dependencies().
     // dep гарантированно не nullptr — registry проверил граф до вызова.
     virtual void onInject(const std::string& /*depKey*/, IModule* /*dep*/) {}
+
+    // Декларативный перечень команд, которые модуль хочет публиковать в ModuleRegistry
+    // для ручного/диагностического вызова. Симметрично dependencies(): вызывается один раз
+    // при registerModule, реестр забирает handlers в свой индекс и владеет ими до разрушения
+    // модуля. Default: пусто (модуль ничего не публикует).
+    //
+    // Не const намеренно: handler-ы обычно захватывают this и могут менять
+    // внутреннее состояние модуля (например, ID подписок EventBus).
+    virtual std::vector<CommandDescriptor> commands() { return {}; }
 };
 
 } // namespace core::contracts

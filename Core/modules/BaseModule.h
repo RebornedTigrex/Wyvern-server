@@ -2,6 +2,7 @@
 #include "contracts/IModule.h"
 #include <atomic>
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -69,10 +70,12 @@ public:
 
     void shutdown() override {
         if (initialized_) {
+            std::cout << "[shutdown] " << name_ << " ..." << std::endl;
             lifecycleState_.store(LifecycleState::Stopping);
             onShutdown();
             initialized_.store(false);
             lifecycleState_.store(LifecycleState::Stopped);
+            std::cout << "[shutdown] " << name_ << " done" << std::endl;
         }
     }
 

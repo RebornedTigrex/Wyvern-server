@@ -9,6 +9,8 @@
 #include "HttpTransportModule.h"
 #include "udp/udpTransportModule.h"
 
+#include "modules/console/InteractiveConsoleModule.h"
+
 void registerWyvernPlatform(Core& core) {
     auto& reg = *core.getModuleRegistry();
 
@@ -25,5 +27,13 @@ void registerWyvernPlatform(Core& core) {
         core.ioContext());
     reg.registerModule<UdpTransportModule>(
         core.moduleConfig<UdpTransportModule>(),
+        core.ioContext());
+
+    // InteractiveConsoleModule регистрируем ПОСЛЕ всех прикладных модулей, чтобы
+    // при первом отрисовывании list он видел всех. Сам порядок initialize
+    // среди модулей определяется их dependencies(), порядок регистрации на это не влияет.
+    reg.registerModule<InteractiveConsoleModule>(
+        core.moduleConfig<InteractiveConsoleModule>(),
+        reg,
         core.ioContext());
 }

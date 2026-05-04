@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "modules/BaseModule.h"
 #include "runtime/ConfigSection.h"
@@ -16,12 +16,15 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <functional>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -93,6 +96,40 @@ public:
         return stats_;
     }
 
+    // Публикуем набор диагностических команд для ручного тестирования через ModuleRegistry.
+    // Ни одна команда не вводит новых обходных путей в транспорт: send идёт через тот же
+    // EventBus, что и боевые потребители; tap использует уже имеющиеся UdpPacketReceived/Dropped.
+    std::vector<core::contracts::CommandDescriptor> commands() override {
+        std::vector<core::contracts::CommandDescriptor> result;
+        result.reserve(4);
+
+        result.push_back({ "udp.stats",
+            "вывести текущие счётчики RX/TX/drops",
+            [this](const core::contracts::CommandArgs&) {
+                return cmdStats();
+            }});
+
+        result.push_back({ "udp.config",
+            "вывести активную конфигурацию транспорта",
+            [this](const core::contracts::CommandArgs&) {
+                return cmdConfig();
+            }});
+
+        result.push_back({ "udp.send",
+            "udp.send <addr> <port> <text>: отправить utf8-payload через EventBus (type=0,flags=0,meta=0)",
+            [this](const core::contracts::CommandArgs& args) {
+                return cmdSend(args);
+            }});
+
+        result.push_back({ "udp.tap",
+            "udp.tap on|off: подписаться или отписаться от RX-событий с логом в stdout",
+            [this](const core::contracts::CommandArgs& args) {
+                return cmdTap(args);
+            }});
+
+        return result;
+    }
+
 protected:
     bool onInitialize() override {
         try {
@@ -145,6 +182,14 @@ protected:
         if (eventBus_ && sendSubscription_ != 0) {
             eventBus_->unsubscribe(sendSubscription_);
             sendSubscription_ = 0;
+        }
+        if (eventBus_ && tapRecvSubscription_ != 0) {
+            eventBus_->unsubscribe(tapRecvSubscription_);
+            tapRecvSubscription_ = 0;
+        }
+        if (eventBus_ && tapDropSubscription_ != 0) {
+            eventBus_->unsubscribe(tapDropSubscription_);
+            tapDropSubscription_ = 0;
         }
 
         if (socket_) {
@@ -443,4 +488,130 @@ private:
 
     mutable std::mutex                          statsMutex_;
     Stats                                       stats_{};
+
+    // ---- command handlers (реализация опубликованных commands()) ---------------
+
+    core::contracts::CommandResult cmdStats() {
+        const Stats s = stats();
+        std::ostringstream oss;
+        oss << "rx: ok="           << s.rxOk
+            << " bytes="           << s.rxBytesOk
+            << " drop[invalidMagic=" << s.rxDroppedInvalidMagic
+            << ", unsupVer="         << s.rxDroppedUnsupportedVersion
+            << ", truncated="        << s.rxDroppedTruncatedHeader
+            << ", lengthMismatch="   << s.rxDroppedLengthMismatch
+            << ", oversized="        << s.rxDroppedOversized
+            << ", sockErr="          << s.rxSocketErrors
+            << "]\n"
+            << "tx: ok="           << s.txOk
+            << " bytes="           << s.txBytesOk
+            << " drop[backpressure=" << s.txDroppedBackpressure
+            << ", sockErr="          << s.txSocketErrors
+            << "]";
+        return core::contracts::CommandResult::success(oss.str());
+    }
+
+    core::contracts::CommandResult cmdConfig() {
+        std::ostringstream oss;
+        oss << "address="         << address_
+            << " port="           << port_
+            << " maxDatagramBytes=" << maxDatagramBytes_
+            << " recvBufferBytes="  << recvBufferBytes_
+            << " txQueueLimit="     << txQueueLimit_
+            << " v6Only="           << (v6Only_ ? "true" : "false");
+        return core::contracts::CommandResult::success(oss.str());
+    }
+
+    core::contracts::CommandResult cmdSend(const core::contracts::CommandArgs& args) {
+        if (args.size() != 3) {
+            return core::contracts::CommandResult::failure(
+                "usage: udp.send <addr> <port> <text>");
+        }
+        if (!eventBus_) {
+            return core::contracts::CommandResult::failure("EventBus is not available");
+        }
+
+        std::uint16_t port = 0;
+        try {
+            const long parsed = std::stol(args[1]);
+            if (parsed < 0 || parsed > 65535) {
+                return core::contracts::CommandResult::failure("port must be in [0, 65535]");
+            }
+            port = static_cast<std::uint16_t>(parsed);
+        } catch (const std::exception& e) {
+            return core::contracts::CommandResult::failure(
+                std::string("invalid port: ") + e.what());
+        }
+
+        wyvern::transport::udp::UdpSendRequested req;
+        req.target.address = args[0];
+        req.target.port    = port;
+        req.type           = 0;
+        req.flags          = 0;
+        req.meta           = 0;
+        req.payload.assign(args[2].begin(), args[2].end());
+
+        eventBus_->publish(std::move(req));
+
+        std::ostringstream oss;
+        oss << "queued: target=" << args[0] << ":" << port
+            << " payloadBytes=" << args[2].size();
+        return core::contracts::CommandResult::success(oss.str());
+    }
+
+    core::contracts::CommandResult cmdTap(const core::contracts::CommandArgs& args) {
+        if (args.size() != 1 || (args[0] != "on" && args[0] != "off")) {
+            return core::contracts::CommandResult::failure("usage: udp.tap on|off");
+        }
+        if (!eventBus_) {
+            return core::contracts::CommandResult::failure("EventBus is not available");
+        }
+
+        if (args[0] == "on") {
+            if (tapRecvSubscription_ != 0 || tapDropSubscription_ != 0) {
+                return core::contracts::CommandResult::success("tap already on");
+            }
+
+            std::function<void(const wyvern::transport::udp::UdpPacketReceived&)> recvHandler =
+                [](const wyvern::transport::udp::UdpPacketReceived& ev) {
+                    std::ostringstream oss;
+                    oss << "[udp.tap] RX from " << ev.sender.address << ":" << ev.sender.port
+                        << " type="  << static_cast<int>(ev.type)
+                        << " flags=" << static_cast<int>(ev.flags)
+                        << " meta="  << ev.meta
+                        << " bytes=" << ev.payload.size();
+                    std::cout << oss.str() << '\n';
+                };
+            std::function<void(const wyvern::transport::udp::UdpPacketDropped&)> dropHandler =
+                [](const wyvern::transport::udp::UdpPacketDropped& ev) {
+                    std::ostringstream oss;
+                    oss << "[udp.tap] DROP sender=" << ev.sender.address << ":" << ev.sender.port
+                        << " reason=" << wyvern::transport::udp::toString(ev.reason)
+                        << " size="   << ev.size;
+                    std::cout << oss.str() << '\n';
+                };
+
+            tapRecvSubscription_ = eventBus_->subscribe(std::move(recvHandler));
+            tapDropSubscription_ = eventBus_->subscribe(std::move(dropHandler));
+            return core::contracts::CommandResult::success("tap on");
+        }
+
+        // "off"
+        if (tapRecvSubscription_ == 0 && tapDropSubscription_ == 0) {
+            return core::contracts::CommandResult::success("tap already off");
+        }
+        if (tapRecvSubscription_ != 0) {
+            eventBus_->unsubscribe(tapRecvSubscription_);
+            tapRecvSubscription_ = 0;
+        }
+        if (tapDropSubscription_ != 0) {
+            eventBus_->unsubscribe(tapDropSubscription_);
+            tapDropSubscription_ = 0;
+        }
+        return core::contracts::CommandResult::success("tap off");
+    }
+
+    // ---- tap subscriptions (живут пока udp.tap on, снимаются в onShutdown) -------
+    core::contracts::SubscriptionId             tapRecvSubscription_ = 0;
+    core::contracts::SubscriptionId             tapDropSubscription_ = 0;
 };

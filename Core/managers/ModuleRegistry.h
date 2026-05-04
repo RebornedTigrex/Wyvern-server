@@ -25,11 +25,23 @@
 class ModuleRegistry : public core::contracts::IModuleRegistry {
 private:
     using ModuleId = core::contracts::ModuleId;
+    using CommandHandler = core::contracts::CommandHandler;
+    using CommandSummary = core::contracts::CommandSummary;
+    using CommandResult = core::contracts::CommandResult;
+    using CommandArgs = core::contracts::CommandArgs;
 
     std::unordered_map<ModuleId, std::unique_ptr<core::contracts::IModule>> modules_;
     std::unordered_map<std::string, ModuleId> moduleIdsByKey_;
     std::unordered_map<ModuleId, std::string> moduleKeysById_;
     std::unordered_map<std::string, std::vector<std::string>> dependencyGraph_;
+
+    // Индекс опубликованных модулями команд.
+    // Первый ключ — moduleKey, второй — имя команды. Handlers хранятся отдельно
+    // от summaries: snapshots() отдаёт только summaries (без callable), а invokeCommand
+    // поднимает handler под mutex и вызывает его уже без лока.
+    std::unordered_map<std::string, std::unordered_map<std::string, CommandHandler>> commandHandlers_;
+    std::unordered_map<std::string, std::vector<CommandSummary>> commandSummaries_;
+
     ModuleId nextId_ = 1;
     mutable std::mutex mutex_;
 
@@ -90,6 +102,38 @@ private:
         for (const auto& [key, id] : moduleIdsByKey_) {
             (void)id;
             dfs(key);
+        }
+    }
+
+    // Забирает команды из module.commands() и индексирует их по moduleKey. Бросает
+    // std::runtime_error на пустых именах, пустых handlers и дубликатах в пределах
+    // одного модуля, чтобы ошибки декларации ловились на момент registerModule.
+    // Не const-параметр: IModule::commands() имеет право менять внутреннее состояние.
+    void registerCommandMetadataOrThrow(core::contracts::IModule& module) {
+        const std::string key = module.moduleKey();
+        auto descriptors = module.commands();
+        if (descriptors.empty()) {
+            return;
+        }
+
+        auto& handlerMap = commandHandlers_[key];
+        auto& summaryList = commandSummaries_[key];
+        summaryList.reserve(summaryList.size() + descriptors.size());
+
+        for (auto& descriptor : descriptors) {
+            if (descriptor.name.empty()) {
+                throw std::runtime_error("Command name must not be empty for module '" + key + "'.");
+            }
+            if (!descriptor.handler) {
+                throw std::runtime_error("Command handler must not be empty for '" + key + "::" + descriptor.name + "'.");
+            }
+            if (handlerMap.find(descriptor.name) != handlerMap.end()) {
+                throw std::runtime_error("Duplicate command '" + descriptor.name + "' on module '" + key + "'.");
+            }
+
+            CommandSummary summary{ descriptor.name, descriptor.summary };
+            handlerMap.emplace(descriptor.name, std::move(descriptor.handler));
+            summaryList.push_back(std::move(summary));
         }
     }
 
@@ -185,6 +229,10 @@ public:
             core::contracts::IModule* dep = getModuleByKey(depKey);
             module->onInject(depKey, dep);
         }
+
+        // Команды забираем ПОСЛЕ onInject: модуль может формировать дескрипторы
+        // с захватом внедрённых зависимостей.
+        registerCommandMetadataOrThrow(*module);
 
         T* ptr = module.get();
         modules_[id] = std::move(module);
@@ -282,17 +330,54 @@ public:
     }
 
     std::vector<core::contracts::ModuleSnapshot> snapshots() const override {
+        std::lock_guard<std::mutex> lock(mutex_);
         std::vector<core::contracts::ModuleSnapshot> result;
         result.reserve(modules_.size());
         for (const auto& [id, module] : modules_) {
             core::contracts::ModuleSnapshot snapshot;
             snapshot.id = id;
             snapshot.name = module->getName();
+            snapshot.moduleKey = module->moduleKey();
             snapshot.state = module->state();
             snapshot.enabled = module->isEnabled();
+
+            const auto summaryIt = commandSummaries_.find(snapshot.moduleKey);
+            if (summaryIt != commandSummaries_.end()) {
+                snapshot.commands = summaryIt->second;
+            }
+
             result.push_back(std::move(snapshot));
         }
         return result;
+    }
+
+    CommandResult invokeCommand(
+        const std::string& moduleKey,
+        const std::string& commandName,
+        const CommandArgs& args) override {
+        CommandHandler handler;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto moduleIt = commandHandlers_.find(moduleKey);
+            if (moduleIt == commandHandlers_.end()) {
+                return CommandResult::failure("Module not found or has no commands: " + moduleKey);
+            }
+            const auto handlerIt = moduleIt->second.find(commandName);
+            if (handlerIt == moduleIt->second.end()) {
+                return CommandResult::failure("Command not found: " + moduleKey + "::" + commandName);
+            }
+            // Копируем std::function, чтобы освободить lock до вызова handler-а.
+            handler = handlerIt->second;
+        }
+
+        try {
+            return handler(args);
+        } catch (const std::exception& e) {
+            return CommandResult::failure(
+                std::string("Command threw an exception: ") + e.what());
+        } catch (...) {
+            return CommandResult::failure("Command threw an unknown exception.");
+        }
     }
 
     std::vector<ModuleId> getModuleIds() const {
