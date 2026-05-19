@@ -41,6 +41,8 @@ endif()
 message(STATUS "Using Core from: ${WYVERN_RESOLVED_CORE_DIR}")
 add_subdirectory("${WYVERN_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_core")
 
+option(WYVERN_BUILD_P2P_MESSENGER "Build P2P messenger target" ON)
+
 if(WYVERN_BUILD_FOUNDATION)
   find_package(Boost REQUIRED COMPONENTS system thread)
 
@@ -71,5 +73,47 @@ if(WYVERN_BUILD_FOUNDATION)
   if(WIN32)
     target_compile_definitions(wyvern_server_foundation PRIVATE _WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(wyvern_server_foundation PRIVATE ws2_32 mswsock)
+  endif()
+endif()
+
+if(WYVERN_BUILD_P2P_MESSENGER)
+  find_package(Boost REQUIRED COMPONENTS system thread)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
+  find_package(pybind11 CONFIG REQUIRED)
+
+  add_executable(p2p_messenger
+    Application/platform/P2pMessengerMain.cpp
+    Application/platform/P2pPlatformModules.cpp
+    Application/modules/p2p/transport/P2pConnectionModule.cpp
+    Application/modules/p2p/crypto/PythonRuntimeModule.cpp
+    Application/modules/p2p/crypto/MeshCryptoModule.cpp
+    Application/modules/p2p/db/MeshNodeDbModule.cpp
+    Application/modules/p2p/app/P2pMessengerModule.cpp
+  )
+
+  target_include_directories(p2p_messenger
+    PRIVATE
+      ${CMAKE_SOURCE_DIR}/Application/platform
+      ${CMAKE_SOURCE_DIR}/Application/modules
+      ${CMAKE_SOURCE_DIR}/Application/modules/p2p
+      ${CMAKE_SOURCE_DIR}/Application/modules/Transport
+  )
+
+  target_link_libraries(p2p_messenger
+    PRIVATE
+      WyvernCore
+      Boost::system
+      Boost::thread
+      Python3::Python
+      pybind11::embed
+  )
+
+  if(WIN32)
+    target_compile_definitions(p2p_messenger PRIVATE
+      _WIN32_WINNT=0x0A00
+      WIN32_LEAN_AND_MEAN
+      NOMINMAX
+    )
+    target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
   endif()
 endif()
