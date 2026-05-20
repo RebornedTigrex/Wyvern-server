@@ -23,6 +23,7 @@ P2pConnectionModule::P2pConnectionModule(
       stunPort_(static_cast<std::uint16_t>(cfg.value<int>("stunPort", 19302))),
       probeIntervalMs_(cfg.value<int>("probeIntervalMs", 200)),
       probeTimeoutMs_(cfg.value<int>("probeTimeoutMs", 10000)),
+      stunTimeoutMs_(cfg.value<int>("stunTimeoutMs", 5000)),
       maxDatagramBytes_(static_cast<std::size_t>(cfg.value<int>("maxDatagramBytes", 1400)))
 {}
 
@@ -43,6 +44,7 @@ bool P2pConnectionModule::onInitialize() {
 
         probeTimer_        = std::make_unique<boost::asio::steady_timer>(ioc_);
         probeTimeoutTimer_ = std::make_unique<boost::asio::steady_timer>(ioc_);
+        stunTimeoutTimer_  = std::make_unique<boost::asio::steady_timer>(ioc_);
 
         std::cout << "[P2pConnection] listening on UDP port " << localPort_ << "\n";
         doReceive();
@@ -55,6 +57,9 @@ bool P2pConnectionModule::onInitialize() {
 
 void P2pConnectionModule::onShutdown() {
     stopProbeTimer();
+    if (stunTimeoutTimer_) {
+        stunTimeoutTimer_->cancel();
+    }
     if (socket_ && socket_->is_open()) {
         boost::system::error_code ec;
         socket_->cancel(ec);
@@ -63,6 +68,7 @@ void P2pConnectionModule::onShutdown() {
     socket_.reset();
     probeTimer_.reset();
     probeTimeoutTimer_.reset();
+    stunTimeoutTimer_.reset();
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +99,11 @@ void P2pConnectionModule::requestStun() {
 
     auto request = p2p::stun::buildBindingRequest(stunTxid_);
 
+    std::cout << "[P2pConnection] resolving STUN server: "
+              << stunServer_ << ":" << stunPort_ << "\n";
+
     // Resolve STUN server and send.
+    // Explicitly filter to IPv4: the socket is opened as v4().
     auto resolver = std::make_shared<udp_resolver>(ioc_);
     resolver->async_resolve(
         stunServer_,
@@ -107,10 +117,42 @@ void P2pConnectionModule::requestStun() {
                 std::cerr << "[P2pConnection] STUN resolve error: " << ec.message() << "\n";
                 return;
             }
-            udp_endpoint stunEp = results.begin()->endpoint();
+
+            // The socket is IPv4-only — skip any IPv6 results to avoid
+            // a silent send failure (address-family mismatch).
+            udp_endpoint stunEp;
+            bool found = false;
+            for (const auto& entry : results) {
+                if (entry.endpoint().address().is_v4()) {
+                    stunEp = entry.endpoint();
+                    found  = true;
+                    break;
+                }
+            }
+            if (!found) {
+                stunPending_.store(false);
+                std::cerr << "[P2pConnection] STUN resolve: no IPv4 address for "
+                          << stunServer_ << "\n";
+                return;
+            }
+
             sendRaw(stunEp, std::move(request));
             std::cout << "[P2pConnection] STUN request sent to "
-                      << stunEp.address().to_string() << ":" << stunEp.port() << "\n";
+                      << stunEp.address().to_string() << ":" << stunEp.port()
+                      << " (timeout " << stunTimeoutMs_ << " ms)\n";
+
+            // Start timeout: if no response arrives, clear pending state
+            // so the caller can retry.
+            stunTimeoutTimer_->expires_after(
+                std::chrono::milliseconds(stunTimeoutMs_));
+            stunTimeoutTimer_->async_wait(
+                [this](const boost::system::error_code& ec) {
+                    if (ec) return; // cancelled by handleStunResponse
+                    if (stunPending_.exchange(false)) {
+                        std::cerr << "[P2pConnection] STUN timed out after "
+                                  << stunTimeoutMs_ << " ms\n";
+                    }
+                });
         });
 }
 
@@ -194,6 +236,11 @@ void P2pConnectionModule::handleStunResponse(
     const std::uint8_t* data, std::size_t size)
 {
     if (!stunPending_.load()) return;
+
+    // Cancel timeout: we got a response in time.
+    if (stunTimeoutTimer_) {
+        stunTimeoutTimer_->cancel();
+    }
 
     auto result = p2p::stun::parseBindingResponse(data, size, stunTxid_);
     stunPending_.store(false);

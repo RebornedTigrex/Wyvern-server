@@ -41,6 +41,7 @@ public:
         obj["stunPort"]         = 19302;
         obj["probeIntervalMs"]  = 200;
         obj["probeTimeoutMs"]   = 10000;
+        obj["stunTimeoutMs"]    = 5000;
         obj["maxDatagramBytes"] = 1400;
         return obj;
     }
@@ -121,12 +122,14 @@ private:
     std::uint16_t            stunPort_;
     int                      probeIntervalMs_;
     int                      probeTimeoutMs_;
+    int                      stunTimeoutMs_;
     std::size_t              maxDatagramBytes_;
 
     // --- Networking ---
     std::unique_ptr<udp_socket>               socket_;
     std::unique_ptr<boost::asio::steady_timer> probeTimer_;
     std::unique_ptr<boost::asio::steady_timer> probeTimeoutTimer_;
+    std::unique_ptr<boost::asio::steady_timer> stunTimeoutTimer_;
     std::vector<std::uint8_t>                 rxBuf_;
     udp_endpoint                              rxRemote_;
 
