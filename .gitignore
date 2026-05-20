@@ -8,6 +8,8 @@
 
 **/build/
 
+!.agents/skills/build
+
 
 # User-specific files
 *.rsuser
