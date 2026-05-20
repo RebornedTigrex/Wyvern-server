@@ -25,6 +25,10 @@ void MeshNodeDbModule::onInject(const std::string& depKey,
 }
 
 bool MeshNodeDbModule::onInitialize() {
+    if (!Py_IsInitialized()) {
+        std::cerr << "[MeshNodeDb] Python interpreter is not available\n";
+        return false;
+    }
     if (!crypto_) {
         std::cerr << "[MeshNodeDb] MeshCryptoModule not injected\n";
         return false;
@@ -49,8 +53,12 @@ bool MeshNodeDbModule::onInitialize() {
         auto encryptFn = meshCryptoStorage.attr("encrypt_storage_field");
         auto decryptFn = meshCryptoStorage.attr("decrypt_storage_field");
 
-        auto keystore       = crypto_->keystoreObject();
-        auto storageKeyId   = crypto_->storageKeyId();
+        auto keystore = crypto_->keystoreObject();
+        if (keystore.ptr() == nullptr) {
+            std::cerr << "[MeshNodeDb] MeshCryptoModule did not initialize (keystore is null)\n";
+            return false;
+        }
+        auto storageKeyId = crypto_->storageKeyId();
 
         auto provider = CallableProvider(
             "keystore"_a               = keystore,
@@ -85,9 +93,11 @@ bool MeshNodeDbModule::onInitialize() {
 }
 
 void MeshNodeDbModule::onShutdown() {
+    if (!Py_IsInitialized()) return;
     py::gil_scoped_acquire gil;
     try {
-        if (!nodeDatabase_.is_none()) {
+        // nodeDatabase_ may be a null py::object if onInitialize() failed early.
+        if (nodeDatabase_.ptr() != nullptr && !nodeDatabase_.is_none()) {
             nodeDatabase_.attr("close")();
         }
     } catch (...) {}

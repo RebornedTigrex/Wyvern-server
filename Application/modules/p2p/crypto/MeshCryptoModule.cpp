@@ -75,6 +75,10 @@ void MeshCryptoModule::onInject(const std::string& depKey,
 // ---------------------------------------------------------------------------
 
 bool MeshCryptoModule::onInitialize() {
+    if (!Py_IsInitialized()) {
+        std::cerr << "[MeshCrypto] Python interpreter is not available\n";
+        return false;
+    }
     py::gil_scoped_acquire gil;
     try {
         // Resolve keystore path (absolute if relative).
@@ -89,8 +93,9 @@ bool MeshCryptoModule::onInitialize() {
         auto FileKeyStore   = meshCrypto.attr("FileKeyStore");
         auto PasswordProtector = meshCrypto.attr("PasswordProtector");
 
+        // PasswordProtector expects a Python str, not bytes.
         auto protector = PasswordProtector(
-            py::bytes(keystorePassword_.c_str(), keystorePassword_.size()));
+            "password"_a = py::str(keystorePassword_));
 
         keystore_ = FileKeyStore(keystorePath_, protector);
 
@@ -200,10 +205,20 @@ bool MeshCryptoModule::loadOrCreateStorageKey() {
 }
 
 void MeshCryptoModule::onShutdown() {
+    // Guard: if the interpreter was never started (or failed to start),
+    // Python objects were never initialised — nothing to release.
+    if (!Py_IsInitialized()) {
+        identityPublicKeyBytes_.clear();
+        return;
+    }
     py::gil_scoped_acquire gil;
-    // Release all Python objects before interpreter shuts down.
-    clearSession();
-    keystore_     = py::object();
+    {
+        std::lock_guard<std::mutex> lock(sessionMutex_);
+        sessionState_     = py::object();
+        pendingHandshake_ = py::object();
+        cachedInitBytes_.clear();
+    }
+    keystore_      = py::object();
     identityKeyId_ = py::object();
     storageKeyId_  = py::object();
     identityPublicKeyBytes_.clear();

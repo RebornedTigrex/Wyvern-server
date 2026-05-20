@@ -78,6 +78,16 @@ endif()
 
 if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
+
+  # On Windows, prefer the system (registry) Python over vcpkg's debug Python.
+  # vcpkg's debug Python requires extension modules with _d suffix (_rust_d.pyd etc.)
+  # which third-party packages do not ship. Using the release Python in all
+  # build configs avoids this incompatibility.
+  if(WIN32)
+    set(Python3_FIND_REGISTRY FIRST)
+  endif()
+  # Do not append debug postfix when searching for the Python library.
+  set(Python3_DEBUG_POSTFIX "")
   find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
   find_package(pybind11 CONFIG REQUIRED)
 
@@ -115,5 +125,11 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       NOMINMAX
     )
     target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
+    # Force the release Python library even in Debug C++ builds.
+    # The debug Python DLL requires _d.pyd extensions; third-party packages
+    # only ship release .pyd files, so the debug Python will fail to import them.
+    if(Python3_LIBRARY_RELEASE)
+      target_link_libraries(p2p_messenger PRIVATE ${Python3_LIBRARY_RELEASE})
+    endif()
   endif()
 endif()

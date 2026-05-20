@@ -27,6 +27,18 @@ bool PythonRuntimeModule::onInitialize() {
     try {
         interpreter_ = std::make_unique<py::scoped_interpreter>();
 
+        py::gil_scoped_acquire gil;
+        auto sys = py::module_::import("sys");
+
+        // Ensure user site-packages (where pip installs by default on Windows)
+        // are reachable. The embedded Python may not add them automatically
+        // when PYTHONHOME is not set.
+        try {
+            auto userSite = py::module_::import("site")
+                                .attr("getusersitepackages")();
+            sys.attr("path").attr("insert")(0, userSite);
+        } catch (...) {} // non-critical
+
         // Resolve the library path: if relative, anchor it to CWD.
         std::filesystem::path libPath(extLibPath_);
         if (libPath.is_relative()) {
@@ -41,9 +53,7 @@ bool PythonRuntimeModule::onInitialize() {
         }
 
         // Add the library directory to sys.path.
-        py::gil_scoped_acquire gil;
-        py::module_::import("sys").attr("path").attr("insert")(
-            0, libPath.string());
+        sys.attr("path").attr("insert")(0, libPath.string());
 
         // Verify importability.
         try {
@@ -69,8 +79,7 @@ bool PythonRuntimeModule::onInitialize() {
 void PythonRuntimeModule::onShutdown() {
     // interpreter_ is destroyed here; all Python objects in other modules
     // must already be released before this point (guaranteed by dependency order).
-    if (interpreter_) {
-        py::gil_scoped_acquire gil;
-        interpreter_.reset();
-    }
+    // Do NOT acquire the GIL here: scoped_interpreter destructor handles it
+    // internally, and re-acquiring after Py_Finalize is undefined behaviour.
+    interpreter_.reset();
 }
