@@ -369,3 +369,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Wyvern P2P: runtime keystore and message DB
+/p2p_keystore/
+/p2p_messages.db
