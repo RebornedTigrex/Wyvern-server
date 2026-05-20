@@ -197,9 +197,29 @@ if (-not $BuildOnly) {
         "--preset", $Preset,
         "-S", $SourceDir,
         "-B", $BuildDir,
-        "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_TOOLCHAIN_FILE"
+        "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_TOOLCHAIN_FILE",
         "-DWYVERN_BUILD_FOUNDATION=$BuildFoundation"
     )
+
+    # Pass the system Python (from PATH) to CMake so vcpkg's bundled Python
+    # does not take precedence over the Python where pip packages are installed.
+    # vcpkg installs a cmake wrapper for Python3 that hard-codes a search for
+    # python312 with NO_DEFAULT_PATH. Pre-seeding the internal cache variables
+    # (_Python3_INCLUDE_DIR, _Python3_LIBRARY_RELEASE/_DEBUG) prevents the
+    # wrapper's find_path/find_library from overriding the system Python.
+    $systemPython = (Get-Command python -ErrorAction SilentlyContinue)?.Source
+    if ($systemPython) {
+        $pyInclude = (& $systemPython -c "import sysconfig; print(sysconfig.get_path('include'))" 2>&1).Trim()
+        $pyPrefix  = (& $systemPython -c "import sys; print(sys.prefix)" 2>&1).Trim()
+        $pyVerNum  = (& $systemPython -c "import sys; v=sys.version_info; print(f'{v.major}{v.minor}')" 2>&1).Trim()
+        $pyLib     = "$pyPrefix\libs\python$pyVerNum.lib"
+        Write-Host "Using Python: $systemPython  (include=$pyInclude  lib=$pyLib)"
+        $configureArgs += "-DPython3_EXECUTABLE=$systemPython"
+        $configureArgs += "-D_Python3_INCLUDE_DIR=$pyInclude"
+        $configureArgs += "-D_Python3_LIBRARY_RELEASE=$pyLib"
+        $configureArgs += "-D_Python3_LIBRARY_DEBUG=$pyLib"
+    }
+
     Invoke-External -Exe "cmake" -Args $configureArgs
 }
 
