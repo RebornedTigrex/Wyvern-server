@@ -113,9 +113,12 @@ bool Core::bootstrap(int argc, char** argv) {
     runtimeServices = std::make_unique<core::runtime::RuntimeServices>();
     bootstrapped = true;
 
+    if(configStore->hasFile() == false){
+        configStore->commit(configPath.string());//FIXME: ЁБАННЫЙ ЖЕЛЕЗНЫЙ БОЛВАН ХУЙНИ НАПИСАЛ. Конфиг не создаётся и методов для создания нет
+    }
     std::cout << "[Core] bootstrap complete (config: " << configPath.string()
-              << (configStore->hasFile() ? " [loaded]" : " [will be created]")
-              << ")\n";
+                << (configStore->hasFile() ? " [loaded]" : " [created]")
+                << ")\n";
     return true;
 }
 
