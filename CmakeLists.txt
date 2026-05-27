@@ -76,6 +76,8 @@ if(WYVERN_BUILD_FOUNDATION)
   endif()
 endif()
 
+option(WYVERN_BUILD_P2P_TESTS "Build P2P transport unit and loopback tests" ON)
+
 if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
 
@@ -131,5 +133,42 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     if(Python3_LIBRARY_RELEASE)
       target_link_libraries(p2p_messenger PRIVATE ${Python3_LIBRARY_RELEASE})
     endif()
+  endif()
+endif()
+
+if(WYVERN_BUILD_P2P_TESTS)
+  find_package(Boost REQUIRED COMPONENTS unit_test_framework system thread)
+
+  add_executable(p2p_tests
+    Tests/p2p/main.cpp
+    Tests/p2p/StunProtocolTests.cpp
+    Tests/p2p/P2pLoopbackTests.cpp
+    Application/modules/p2p/transport/P2pConnectionModule.cpp
+  )
+
+  target_include_directories(p2p_tests
+    PRIVATE
+      ${CMAKE_SOURCE_DIR}/Application/modules
+      ${CMAKE_SOURCE_DIR}/Application/modules/p2p
+      ${CMAKE_SOURCE_DIR}/Application/modules/Transport
+      ${CMAKE_SOURCE_DIR}/Core
+  )
+
+  target_link_libraries(p2p_tests
+    PRIVATE
+      WyvernCore
+      Boost::unit_test_framework
+      Boost::system
+      Boost::thread
+  )
+
+  if(WIN32)
+    target_compile_definitions(p2p_tests PRIVATE
+      _WIN32_WINNT=0x0A00
+      WIN32_LEAN_AND_MEAN
+      NOMINMAX
+      BOOST_TEST_DYN_LINK
+    )
+    target_link_libraries(p2p_tests PRIVATE ws2_32 mswsock)
   endif()
 endif()

@@ -69,8 +69,8 @@ bool P2pMessengerModule::onInitialize() {
         });
 
     std::cout << "[P2pMessenger] ready. Local peer id: " << localPeerId_ << "\n"
-              << "  Use 'p2p.stun' to discover your public endpoint,\n"
-              << "  then 'p2p.connect <ip> <port>' to connect to a peer.\n";
+              << "  Use 'p2p.messenger stun' to discover your public endpoint,\n"
+              << "  then 'p2p.messenger connect <ip> <port>' to connect to a peer.\n";
     return true;
 }
 
@@ -93,7 +93,7 @@ void P2pMessengerModule::onStunResolved(
     std::cout << "[P2pMessenger] Your public endpoint: "
               << ev.publicAddress << ":" << ev.publicPort << "\n"
               << "  Share this with your peer and then both run:\n"
-              << "  p2p.connect <peer_ip> <peer_port>\n";
+              << "  p2p.messenger connect <peer_ip> <peer_port>\n";
 }
 
 void P2pMessengerModule::onPeerConnected(
@@ -220,7 +220,7 @@ void P2pMessengerModule::handleHandshakeInit(
         state_ = State::Secure;
     }
     std::cout << "[P2pMessenger] Secure session established (responder).\n"
-              << "  You can now use p2p.send <message>\n";
+              << "  You can now use |p2p.messenger send <message>|\n";
 }
 
 void P2pMessengerModule::handleHandshakeResponse(
@@ -250,7 +250,7 @@ void P2pMessengerModule::handleHandshakeResponse(
         state_ = State::Secure;
     }
     std::cout << "[P2pMessenger] Secure session established (initiator).\n"
-              << "  You can now use p2p.send <message>\n";
+              << "  You can now use |p2p.messenger send <message>|\n";
 }
 
 void P2pMessengerModule::handleTextMessage(
@@ -357,22 +357,22 @@ std::string P2pMessengerModule::chatIdFromPeerIds(
 
 std::vector<core::contracts::CommandDescriptor> P2pMessengerModule::commands() {
     return {
-        { "p2p.stun",
+        { "stun",
           "Discover your public IP:port via Google STUN",
           [this](const core::contracts::CommandArgs& a) { return cmdStun(a); } },
-        { "p2p.connect",
-          "p2p.connect <ip> <port> -- start hole punching to peer",
+        { "connect",
+          "p2p.messenger connect <ip> <port> -- start hole punching to peer",
           [this](const core::contracts::CommandArgs& a) { return cmdConnect(a); } },
-        { "p2p.identity",
+        { "identity",
           "Show local identity (peer id and public key hex)",
           [this](const core::contracts::CommandArgs& a) { return cmdIdentity(a); } },
-        { "p2p.send",
-          "p2p.send <message text> -- send encrypted text to connected peer",
+        { "send",
+          "p2p.messenger send <message text> -- send encrypted text to connected peer",
           [this](const core::contracts::CommandArgs& a) { return cmdSend(a); } },
-        { "p2p.history",
+        { "history",
           "Show message history for the current chat",
           [this](const core::contracts::CommandArgs& a) { return cmdHistory(a); } },
-        { "p2p.status",
+        { "status",
           "Show current connection and session state",
           [this](const core::contracts::CommandArgs& a) { return cmdStatus(a); } },
     };
@@ -390,7 +390,7 @@ core::contracts::CommandResult P2pMessengerModule::cmdConnect(
 {
     if (args.size() != 2) {
         return core::contracts::CommandResult::failure(
-            "usage: p2p.connect <ip> <port>");
+            "usage: p2p.messenger connect <ip> <port>");
     }
     std::uint16_t port = 0;
     try {
@@ -441,7 +441,7 @@ core::contracts::CommandResult P2pMessengerModule::cmdSend(
     }
     if (args.empty()) {
         return core::contracts::CommandResult::failure(
-            "usage: p2p.send <text>");
+            "usage: p2p.messenger send <text>");
     }
 
     // Join all args as the message.

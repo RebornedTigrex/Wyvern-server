@@ -13,7 +13,7 @@ CMake configure preset name (default: x64-debug or $env:WYVERN_PRESET).
 Custom binary directory (default: out/build/<preset>-foundation or $env:WYVERN_BUILD_DIR).
 
 .PARAMETER Target
-Build target name (default: wyvern_server_foundation or $env:WYVERN_TARGET).
+Build target name (default: all or $env:WYVERN_TARGET).
 
 .PARAMETER ConfigureOnly
 Run only CMake configure step.
@@ -28,7 +28,7 @@ Run built executable after successful build.
 pwsh -File .\build.ps1
 
 .EXAMPLE
-pwsh -File .\build.ps1 -Preset x64-release -Target wyvern_server_foundation
+pwsh -File .\build.ps1 -Preset x64-release -Target all
 
 .EXAMPLE
 $env:WYVERN_PRESET = "x64-debug"
@@ -73,7 +73,7 @@ if ([string]::IsNullOrWhiteSpace($Target)) {
     if ($env:WYVERN_TARGET) {
         $Target = $env:WYVERN_TARGET
     } else {
-        $Target = "wyvern_server_foundation"
+        $Target = "all"
     }
 }
 if ([string]::IsNullOrWhiteSpace($BuildFoundation)) {

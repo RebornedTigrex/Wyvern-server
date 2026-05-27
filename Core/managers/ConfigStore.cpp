@@ -149,7 +149,7 @@ core::runtime::ConfigSection ConfigStore::moduleConfig(const std::string& module
 }
 
 void ConfigStore::commit(const std::filesystem::path& path) {
-    if (!dirty_) {
+    if (!dirty_) {//FIXME: Сука, блять. Железный болван хуйни написал
         return;
     }
 
