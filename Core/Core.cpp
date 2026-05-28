@@ -114,7 +114,7 @@ bool Core::bootstrap(int argc, char** argv) {
     bootstrapped = true;
 
     if(configStore->hasFile() == false){
-        configStore->commit(configPath.string());//FIXME: ЁБАННЫЙ ЖЕЛЕЗНЫЙ БОЛВАН ХУЙНИ НАПИСАЛ. Конфиг не создаётся и методов для создания нет
+        configStore->commit(configPath.string());
     }
     std::cout << "[Core] bootstrap complete (config: " << configPath.string()
                 << (configStore->hasFile() ? " [loaded]" : " [created]")
