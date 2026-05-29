@@ -1,128 +1,232 @@
 ﻿{
-  "version": 3,
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
   "configurePresets": [
     {
-      "name": "windows-base",
+      "name": "base",
       "hidden": true,
+      "architecture": { "value": "x64", "strategy": "external" },
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "installDir": "${sourceDir}/out/install/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "cl.exe",
-        "CMAKE_CXX_COMPILER": "cl.exe"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "x64-debug",
-      "displayName": "x64 Debug",
-      "inherits": "windows-base",
-      "architecture": {
-        "value": "x64",
-        "strategy": "external"
-      },
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "x64-release",
-      "displayName": "x64 Release",
-      "inherits": "x64-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
-      "name": "x86-debug",
-      "displayName": "x86 Debug",
-      "inherits": "windows-base",
-      "architecture": {
-        "value": "x86",
-        "strategy": "external"
-      },
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "x86-release",
-      "displayName": "x86 Release",
-      "inherits": "x86-debug",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
-      "name": "linux-debug",
-      "displayName": "Linux Debug",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "installDir": "${sourceDir}/out/install/${presetName}",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
+        "CMAKE_CXX_STANDARD": "21",
+        "CMAKE_INSTALL_PREFIX": "${sourceParentDir}/install",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceParentDir}/triplets",
+        "CMAKE_VERBOSE_MAKEFILE": true,
+        "BUILD_TESTING": true,
+        "STAR_ENABLE_STEAM_INTEGRATION": true,
+        "STAR_ENABLE_DISCORD_INTEGRATION": true
       },
       "vendor": {
-        "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": {
-          "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
+        "microsoft.com/VisualStudioRemoteSettings/CMake/2.0": {
+          "sourceRootDir": "$ms{localSourceDir}\\..",
+          "remoteSourceRootDir": "$env{HOME}/.vs/wsl",
+          "copySourcesOptions": {
+            "method": "rsync",
+            "exclusionList": [ ".vs", ".git", "out", "dist", "attic", "build" ]
+          }
         }
       }
     },
     {
-      "name": "macos-debug",
-      "displayName": "macOS Debug",
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "installDir": "${sourceDir}/out/install/${presetName}",
+      "inherits": "base",
+      "name": "windows-release",
+      "displayName": "Windows x64",
+      "binaryDir": "${sourceParentDir}/build/windows-release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Darwin"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-mixed-md",
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+        "CMAKE_INCLUDE_PATH": "${sourceParentDir}/lib/windows/include",
+        "CMAKE_LIBRARY_PATH": "${sourceParentDir}/lib/windows",
+        "STAR_USE_RPMALLOC": true,
+        "STAR_USE_JEMALLOC": false
       },
       "vendor": {
-        "microsoft.com/VisualStudioRemoteSettings/CMake/1.0": {
-          "sourceDir": "$env{HOME}/.vs/$ms{projectDirName}"
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Windows" ]
         }
+      }
+    },
+    {
+      "inherits": "windows-release",
+      "name": "windows-release-VS2026",
+      "displayName": "Windows x64 (Visual Studio 2026)",
+      "generator": "Visual Studio 18 2026"
+    },
+    {
+      "inherits": "base",
+      "name": "linux-release",
+      "displayName": "Linux x64",
+      "binaryDir": "${sourceParentDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_MAKE_PROGRAM": "ninja",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-mixed",
+        "CMAKE_INCLUDE_PATH": "${sourceParentDir}/lib/linux/include",
+        "CMAKE_LIBRARY_PATH": "${sourceParentDir}/lib/linux",
+        "STAR_ENABLE_STATIC_LIBGCC_LIBSTDCXX": true,
+        "STAR_USE_JEMALLOC": true
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Linux" ]
+        },
+        "microsoft.com/VisualStudioRemoteSettings/CMake/2.0": {
+          "sourceRootDir": "$ms{localSourceDir}\\..",
+          "remoteSourceRootDir": "$env{HOME}/.vs/wsl"
+        }
+      }
+    },
+    {
+      "inherits": "linux-release",
+      "name": "linux-arm-release",
+      "displayName": "Linux ARM",
+      "binaryDir": "${sourceParentDir}/build/linux-arm-release",
+      "architecture": { "value": "arm64", "strategy": "external" },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux-mixed",
+        "STAR_ENABLE_STEAM_INTEGRATION": false,
+        "STAR_ENABLE_DISCORD_INTEGRATION": false
+      }
+    },
+    {
+      "inherits": "linux-release",
+      "name": "linux-release-clang",
+      "displayName": "Linux Clang x64",
+      "binaryDir": "${sourceParentDir}/build/linux-release-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "VCPKG_TARGET_TRIPLET": "x64-linux-mixed-clang",
+        "STAR_USE_JEMALLOC": true
+      }
+    },
+    {
+      "inherits": "linux-arm-release",
+      "name": "linux-arm-release-clang",
+      "displayName": "Linux Clang ARM",
+      "binaryDir": "${sourceParentDir}/build/linux-arm-release-clang",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "VCPKG_TARGET_TRIPLET": "arm64-linux-mixed-clang",
+        "STAR_USE_JEMALLOC": true
+      }
+    },
+    {
+      "inherits": "base",
+      "name": "macos-release",
+      "displayName": "macOS x64",
+      "binaryDir": "${sourceParentDir}/build/macos-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-osx-mixed",
+        "CMAKE_INCLUDE_PATH": "${sourceParentDir}/lib/osx/include",
+        "CMAKE_LIBRARY_PATH": "${sourceParentDir}/lib/osx/x64;${sourceParentDir}/lib/osx",
+        "STAR_ENABLE_STATIC_LIBGCC_LIBSTDCXX": true,
+        "STAR_USE_JEMALLOC": false,
+        "STAR_ENABLE_DISCORD_INTEGRATION": false
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "macOS" ]
+        }
+      }
+    },
+    {
+      "inherits": "macos-release",
+      "name": "macos-arm-release",
+      "displayName": "macOS ARM",
+      "binaryDir": "${sourceParentDir}/build/macos-arm-release",
+      "architecture": { "value": "arm64", "strategy": "external" },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-osx-mixed",
+        "CMAKE_LIBRARY_PATH": "${sourceParentDir}/lib/osx/arm64;${sourceParentDir}/lib/osx"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "x64-debug",
-      "configurePreset": "x64-debug"
+      "name": "windows-release",
+      "configurePreset": "windows-release"
     },
     {
-      "name": "x64-release",
-      "configurePreset": "x64-release"
+      "name": "windows-debug",
+      "configurePreset": "windows-release"
     },
     {
-      "name": "x86-debug",
-      "configurePreset": "x86-debug"
+      "name": "windows-release-VS2026",
+      "configurePreset": "windows-release-VS2026",
+      "configuration": "Release"
     },
     {
-      "name": "x86-release",
-      "configurePreset": "x86-release"
+      "name": "windows-debug-VS2026",
+      "configurePreset": "windows-release-VS2026",
+      "configuration": "Debug"
     },
     {
-      "name": "linux-debug",
-      "configurePreset": "linux-debug"
+      "name": "linux-release",
+      "configurePreset": "linux-release"
     },
     {
-      "name": "macos-debug",
-      "configurePreset": "macos-debug"
+      "name": "linux-arm-release",
+      "configurePreset": "linux-arm-release"
+    },
+    {
+      "name": "linux-release-clang",
+      "configurePreset": "linux-release-clang"
+    },
+    {
+      "name": "linux-arm-release-clang",
+      "configurePreset": "linux-arm-release-clang"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-release"
+    },
+    {
+      "name": "macos-arm-release",
+      "configurePreset": "macos-arm-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "filter": { "include": { "label": "NoAssets" } }
+    },
+    {
+      "inherits": "base",
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "configuration": "Release"
+    },
+    {
+      "inherits": "base",
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "inherits": "base",
+      "name": "linux-arm-release",
+      "configurePreset": "linux-arm-release"
+    },
+    {
+      "inherits": "base",
+      "name": "macos-release",
+      "configurePreset": "macos-release"
+    },
+    {
+      "inherits": "base",
+      "name": "macos-arm-release",
+      "configurePreset": "macos-arm-release"
     }
   ]
 }

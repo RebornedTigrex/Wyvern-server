@@ -1,0 +1,127 @@
+include_guard()
+
+function(DetectSystemParams)
+
+  if(NOT DEFINED WYVERN_ARCHITECTURE)
+    include(TargetArch)
+    target_architecture(WYVERN_ARCHITECTURE)
+  endif()
+
+  # Either TRUE or FALSE
+  if(NOT DEFINED WYVERN_LITTLE_ENDIAN)
+    include(TestBigEndian)
+    test_big_endian(BIGENDIAN)
+    if(NOT BIGENDIAN)
+      set(WYVERN_LITTLE_ENDIAN TRUE)
+    else()
+      set(WYVERN_LITTLE_ENDIAN FALSE)
+    endif()
+  endif()
+
+
+  # System name, like windows, macos, linux, freebsd, or (generic) unix
+  if(NOT DEFINED WYVERN_SYSTEM)
+    if(WIN32)
+      set(WYVERN_SYSTEM "windows")
+    elseif(APPLE AND ${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+      set(WYVERN_SYSTEM "macos")
+    elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+      set(WYVERN_SYSTEM "linux")
+    elseif(UNIX)
+      set(WYVERN_SYSTEM "unix")
+    else()
+      set(WYVERN_SYSTEM "unknown")
+    endif()
+  endif()
+
+  if(NOT DEFINED WYVERN_SYSTEM_FAMILY)
+    if(WIN32)
+      set(WYVERN_SYSTEM_FAMILY "windows")
+    elseif(UNIX)
+      set(WYVERN_SYSTEM_FAMILY "unix")
+    else()
+      set(WYVERN_SYSTEM_FAMILY "unknown")
+    endif()
+  endif()
+
+  # C/C++ compiler ID, like clang, gnu, or msvc
+  if(NOT DEFINED WYVERN_COMPILER)
+    if(NOT CMAKE_C_COMPILER_ID STREQUAL CMAKE_CXX_COMPILER_ID)
+      message(FATAL_ERROR "C and C++ compiler id do not match, unsupported build configuration")
+    endif()
+
+    if(CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_C_COMPILER_ID STREQUAL "AppleClang")
+      set(WYVERN_COMPILER "clang")
+    elseif(CMAKE_COMPILER_IS_GNUC)
+      set(WYVERN_COMPILER "gnu")
+    elseif(MSVC)
+      set(WYVERN_COMPILER "msvc")
+    else()
+      string(TOLOWER "${CMAKE_C_COMPILER_ID}" WYVERN_COMPILER)
+    endif()
+  endif()
+
+  # Enable OPTIONs based on the discovered system / environment...
+
+  if(WYVERN_COMPILER STREQUAL "gnu")
+    option(WYVERN_ENABLE_STATIC_LIBGCC_LIBSTDCXX "Statically link libgcc and libstdc++" OFF)
+    option(WYVERN_ENABLE_GCC_PROFILING "Enable gcc/g++ profiling via the -pg flag" OFF)
+    option(WYVERN_ENABLE_GLIBCXX_DEBUG "Enable _GLIBCXX_DEBUG for g++" OFF)
+  endif()
+
+  if(WYVERN_COMPILER STREQUAL "msvc")
+    option(WYVERN_ENABLE_STATIC_MSVC_RUNTIME "Statically link with the CRT" OFF)
+  endif()
+
+  message(STATUS "Architecture: ${WYVERN_ARCHITECTURE}")
+  message(STATUS "Little Endian: ${WYVERN_LITTLE_ENDIAN}")
+  message(STATUS "System: ${WYVERN_SYSTEM}")
+  message(STATUS "System family: ${WYVERN_SYSTEM_FAMILY}")
+  message(STATUS "C/C++ compiler: ${WYVERN_COMPILER}")
+
+  # Set a cmake variable to true and define a corresponding C/C++ definition
+  function(SET_FLAG flagValue)
+    set(${flagValue} TRUE PARENT_SCOPE)
+    add_definitions(-D${flagValue})
+  endfunction()
+
+  if(WYVERN_LITTLE_ENDIAN)
+    set_flag(WYVERN_LITTLE_ENDIAN)
+  else()
+    set_flag(WYVERN_BIG_ENDIAN)
+  endif()
+
+  if(WYVERN_LITTLE_ENDIAN)
+    set_flag(WYVERN_LITTLE_ENDIAN)
+  else()
+    set_flag(WYVERN_BIG_ENDIAN)
+  endif()
+
+  if(WYVERN_ARCHITECTURE STREQUAL "i386")
+    set_flag(WYVERN_ARCHITECTURE_I386)
+  elseif(WYVERN_ARCHITECTURE STREQUAL "x86_64")
+    set_flag(WYVERN_ARCHITECTURE_X86_64)
+  endif()
+
+  if(WYVERN_SYSTEM STREQUAL "windows")
+    set_flag(WYVERN_SYSTEM_WINDOWS)
+  elseif(WYVERN_SYSTEM STREQUAL "macos")
+    set_flag(WYVERN_SYSTEM_MACOS)
+  elseif(WYVERN_SYSTEM STREQUAL "linux")
+    set_flag(WYVERN_SYSTEM_LINUX)
+  endif()
+
+  if(WYVERN_SYSTEM_FAMILY STREQUAL "windows")
+    set_flag(WYVERN_SYSTEM_FAMILY_WINDOWS)
+  elseif(WYVERN_SYSTEM_FAMILY STREQUAL "unix")
+    set_flag(WYVERN_SYSTEM_FAMILY_UNIX)
+  endif()
+
+  if(WYVERN_COMPILER STREQUAL "gnu")
+    set_flag(WYVERN_COMPILER_GNU)
+  elseif(WYVERN_COMPILER STREQUAL "clang")
+    set_flag(WYVERN_COMPILER_CLANG)
+  elseif(WYVERN_COMPILER STREQUAL "msvc")
+    set_flag(WYVERN_COMPILER_MSVC)
+  endif()
+endfunction()
