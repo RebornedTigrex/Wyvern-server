@@ -4,7 +4,7 @@ function(CompilerFlags)
 
   if(WYVERN_COMPILER_GNU)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -rdynamic -Wall -Wextra -Wno-unused -Wno-implicit-fallthrough -no-pie")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++21 -rdynamic -Wall -Wextra -Wno-unused -Wno-implicit-fallthrough -no-pie")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -rdynamic -Wall -Wextra -Wno-unused -Wno-implicit-fallthrough -no-pie")
 
     if(WYVERN_SYSTEM_FAMILY_WINDOWS)
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mthreads")
@@ -40,13 +40,13 @@ function(CompilerFlags)
 
   elseif(WYVERN_COMPILER_CLANG)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wuninitialized -Wno-parentheses-equality -Wno-deprecated-declarations")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++21 -Wall -Wextra -Wuninitialized -Wno-parentheses-equality -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -Wall -Wextra -Wuninitialized -Wno-parentheses-equality -Wno-deprecated-declarations")
 
     if(WYVERN_SYSTEM_MACOS)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
       set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-export_dynamic")
       set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-export_dynamic")
-      set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++21")
+      set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LANGUAGE_STANDARD "c++20")
       set(CMAKE_XCODE_ATTRIBUTE_CLANG_CXX_LIBRARY "libc++")
     else()
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -D_REENTRANT")
@@ -99,7 +99,7 @@ function(CompilerFlags)
     #            using unions in interesting ways.
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /nologo /MP /EHsc /bigobj /wd4996 /wd4351 /wd4800 /wd4244 /wd4305 /wd4267 /wd4456 /wd4503 /wd4250 /wd4624")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /nologo /std:c++21 /MP /EHsc /bigobj /wd4996 /wd4351 /wd4800 /wd4244 /wd4305 /wd4267 /wd4456 /wd4503 /wd4250 /wd4624")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /nologo /std:c++20 /MP /EHsc /bigobj /wd4996 /wd4351 /wd4800 /wd4244 /wd4305 /wd4267 /wd4456 /wd4503 /wd4250 /wd4624")
 
     if(WYVERN_ENABLE_STATIC_MSVC_RUNTIME)
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /MT")
@@ -137,7 +137,7 @@ function(CompilerFlags)
 
   else()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pthread -D_REENTRANT")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++21 -Wall -pthread -D_REENTRANT")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -Wall -pthread -D_REENTRANT")
 
     set(CMAKE_C_FLAGS_DEBUG "-g")
     set(CMAKE_CXX_FLAGS_DEBUG "-g")

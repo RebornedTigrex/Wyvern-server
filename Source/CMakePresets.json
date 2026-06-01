@@ -13,7 +13,7 @@
       "generator": "Ninja",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
-        "CMAKE_CXX_STANDARD": "21",
+        "CMAKE_CXX_STANDARD": "20",
         "CMAKE_INSTALL_PREFIX": "${sourceParentDir}/install",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceParentDir}/triplets",
         "CMAKE_VERBOSE_MAKEFILE": true,
@@ -39,7 +39,7 @@
       "binaryDir": "${sourceParentDir}/build/windows-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "VCPKG_TARGET_TRIPLET": "x64-windows-mixed-md",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
         "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
         "CMAKE_INCLUDE_PATH": "${sourceParentDir}/lib/windows/include",
         "CMAKE_LIBRARY_PATH": "${sourceParentDir}/lib/windows",
