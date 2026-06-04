@@ -16,7 +16,7 @@ namespace py = pybind11;
 
 PythonRuntimeModule::PythonRuntimeModule(const core::runtime::ConfigSection& cfg)
     : BaseModule("Python Runtime"),
-      extLibPath_(cfg.value<std::string>("extLibPath", "python"))
+      extLibPath_(cfg.value<std::string>("extLibPath", "Application-Source/python"))
 {}
 
 PythonRuntimeModule::~PythonRuntimeModule() {
