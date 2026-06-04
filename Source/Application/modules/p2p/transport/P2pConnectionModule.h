@@ -37,8 +37,8 @@ public:
     static boost::json::object defaults() {
         boost::json::object obj;
         obj["localPort"]        = 9001;
-        obj["stunServer"]       = "stun.l.google.com";
-        obj["stunPort"]         = 19302;
+        obj["stunServer"]       = "stunserver2025.stunprotocol.org";
+        obj["stunPort"]         = 3478;
         obj["probeIntervalMs"]  = 200;
         obj["probeTimeoutMs"]   = 10000;
         obj["stunTimeoutMs"]    = 5000;

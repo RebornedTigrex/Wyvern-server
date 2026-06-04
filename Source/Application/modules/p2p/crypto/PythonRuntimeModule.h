@@ -29,7 +29,7 @@ public:
         boost::json::object obj;
         // Relative path from CWD to the external Python library root.
         // Override in config to use an absolute path.
-        obj["extLibPath"] = "python";
+        obj["extLibPath"] = "Application-Source/python";
         return obj;
     }
 

@@ -1,18 +1,15 @@
-#include "PythonRuntimeModule.h"
-
-// pybind11/embed.h must be included before any system headers
-// that might indirectly pull in Python.h.
+// === MUST BE FIRST ===
 #include <pybind11/embed.h>
 #include <pybind11/pybind11.h>
 
+#include <Python.h>          // нужен для PyConfig
 #include <filesystem>
 #include <iostream>
 
+#include "PythonRuntimeModule.h"
+
 #ifdef _WIN32
   #include <windows.h>
-  #include <process.h>
-#else
-  #include <cstdlib>
 #endif
 
 namespace py = pybind11;
@@ -23,75 +20,75 @@ PythonRuntimeModule::PythonRuntimeModule(const core::runtime::ConfigSection& cfg
 {}
 
 PythonRuntimeModule::~PythonRuntimeModule() {
-    if (interpreter_) {
-        interpreter_.reset();
-    }
+    interpreter_.reset();
 }
 
 bool PythonRuntimeModule::onInitialize() {
     try {
-        // 1. Resolve the bundled Python runtime path.
+        // === 1. Определяем директорию exe ===
+        std::filesystem::path baseDir;
+#ifdef _WIN32
+        wchar_t exePathW[MAX_PATH] = {0};
+        GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
+        baseDir = std::filesystem::path(exePathW).parent_path();
+#else
+        baseDir = std::filesystem::current_path();
+#endif
+
         std::filesystem::path libPath(extLibPath_);
         if (libPath.is_relative()) {
-            libPath = std::filesystem::current_path() / libPath;
+            libPath = baseDir / libPath;
         }
 
         if (!std::filesystem::exists(libPath)) {
-            std::cerr << "[PythonRuntime] bundle not found: "
-                      << libPath.string() << "\n";
+            std::cerr << "[PythonRuntime] bundle not found: " << libPath.string() << "\n";
             return false;
         }
 
-        // 2. Configure environment for embedded Python BEFORE Py_Initialize.
+        const std::string libStr = libPath.string();
+        std::filesystem::path sitePkgs = libPath / "site-packages";
+        std::filesystem::path zipFile  = libPath / "python312.zip";
+
+        // === 2. Собираем PYTHONPATH вручную ===
+        std::string pythonPath;
+        if (std::filesystem::exists(sitePkgs)) pythonPath += sitePkgs.string() + ";";
+        if (std::filesystem::exists(zipFile))  pythonPath += zipFile.string() + ";";
+        pythonPath += libStr;
+
 #ifdef _WIN32
-        const std::string libStr = libPath.string();
+        // === 3. Настраиваем Python ДО инициализации ===
+        _wputenv_s(L"PYTHONHOME", std::wstring(libStr.begin(), libStr.end()).c_str());
+        _wputenv_s(L"PYTHONPATH", std::wstring(pythonPath.begin(), pythonPath.end()).c_str());
+        _wputenv_s(L"PYTHONDONTWRITEBYTECODE", L"1");
+        _wputenv_s(L"PYTHONNOUSERSITE", L"1");
 
-        _putenv_s("PYTHONHOME",             libStr.c_str());
-        _putenv_s("PYTHONDONTWRITEBYTECODE", "1");
-        _putenv_s("PYTHONNOUSERSITE",        "1");
-
-        // Help the DLL loader find python312.dll from the bundle.
         SetDllDirectoryA(libStr.c_str());
-
-        // Prepend the bundle to PATH so dependent DLLs (libcrypto, etc.) are found.
-        if (const char* oldPath = std::getenv("PATH")) {
-            std::string newPath = libStr + ";" + oldPath;
-            _putenv_s("PATH", newPath.c_str());
-        }
-#else
-        const std::string libStr = libPath.string();
-        setenv("PYTHONHOME",             libStr.c_str(), 1);
-        setenv("PYTHONDONTWRITEBYTECODE", "1",            1);
-        setenv("PYTHONNOUSERSITE",        "1",            1);
 #endif
 
-        // 3. Create the interpreter.
+        // === 4. Явно задаём home и path через C API (самое важное) ===
+        Py_SetPythonHome(Py_DecodeLocale(libStr.c_str(), nullptr));
+        Py_SetPath(Py_DecodeLocale(pythonPath.c_str(), nullptr));
+
+        // === 5. Создаём интерпретатор ===
         interpreter_ = std::make_unique<py::scoped_interpreter>();
 
         py::gil_scoped_acquire gil;
         auto sys = py::module_::import("sys");
 
-        // 4. Configure sys.path: bundle root + site-packages.
-        sys.attr("path").attr("insert")(0, libStr);
+        // На всякий случай чистим ещё раз
+        sys.attr("path").attr("clear");
+        if (std::filesystem::exists(sitePkgs)) sys.attr("path").attr("append")(sitePkgs.string());
+        if (std::filesystem::exists(zipFile))  sys.attr("path").attr("append")(zipFile.string());
+        sys.attr("path").attr("append")(libStr);
 
-        std::filesystem::path sitePackages = libPath / "site-packages";
-        if (std::filesystem::exists(sitePackages)) {
-            sys.attr("path").attr("insert")(0, sitePackages.string());
-        }
+        sys.attr("prefix") = libStr;
+        sys.attr("exec_prefix") = libStr;
 
-        // 5. Verify importability of core modules.
-        try {
-            py::module_::import("mesh_crypto");
-            py::module_::import("mesh_node_db");
-        } catch (const py::error_already_set& e) {
-            std::cerr << "[PythonRuntime] failed to import mesh_crypto / mesh_node_db: "
-                      << e.what() << "\n";
-            interpreter_.reset();
-            return false;
-        }
+        // Проверка
+        py::module_::import("mesh_crypto");
+        py::module_::import("mesh_node_db");
 
-        std::cout << "[PythonRuntime] initialized (bundle: "
-                  << libStr << ")\n";
+        std::cout << "[PythonRuntime] initialized successfully\n";
         return true;
 
     } catch (const std::exception& e) {
@@ -102,7 +99,5 @@ bool PythonRuntimeModule::onInitialize() {
 }
 
 void PythonRuntimeModule::onShutdown() {
-    // interpreter_ is destroyed here; all Python objects in other modules
-    // must already be released before this point (guaranteed by dependency order).
     interpreter_.reset();
 }
