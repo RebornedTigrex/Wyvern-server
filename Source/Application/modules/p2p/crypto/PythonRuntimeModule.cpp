@@ -8,16 +8,21 @@
 #include <filesystem>
 #include <iostream>
 
+#ifdef _WIN32
+  #include <windows.h>
+  #include <process.h>
+#else
+  #include <cstdlib>
+#endif
+
 namespace py = pybind11;
 
 PythonRuntimeModule::PythonRuntimeModule(const core::runtime::ConfigSection& cfg)
     : BaseModule("Python Runtime"),
-      extLibPath_(cfg.value<std::string>("extLibPath", "EXTERNALS/kyrcach2_help_tools"))
+      extLibPath_(cfg.value<std::string>("extLibPath", "python"))
 {}
 
 PythonRuntimeModule::~PythonRuntimeModule() {
-    // Ensure the interpreter is destroyed here rather than at static
-    // destruction time to avoid ordering issues.
     if (interpreter_) {
         interpreter_.reset();
     }
@@ -25,37 +30,56 @@ PythonRuntimeModule::~PythonRuntimeModule() {
 
 bool PythonRuntimeModule::onInitialize() {
     try {
-        interpreter_ = std::make_unique<py::scoped_interpreter>();
-
-        py::gil_scoped_acquire gil;
-        auto sys = py::module_::import("sys");
-
-        // Ensure user site-packages (where pip installs by default on Windows)
-        // are reachable. The embedded Python may not add them automatically
-        // when PYTHONHOME is not set.
-        try {
-            auto userSite = py::module_::import("site")
-                                .attr("getusersitepackages")();
-            sys.attr("path").attr("insert")(0, userSite);
-        } catch (...) {} // non-critical
-
-        // Resolve the library path: if relative, anchor it to CWD.
+        // 1. Resolve the bundled Python runtime path.
         std::filesystem::path libPath(extLibPath_);
         if (libPath.is_relative()) {
             libPath = std::filesystem::current_path() / libPath;
         }
 
         if (!std::filesystem::exists(libPath)) {
-            std::cerr << "[PythonRuntime] library path does not exist: "
+            std::cerr << "[PythonRuntime] bundle not found: "
                       << libPath.string() << "\n";
-            interpreter_.reset();
             return false;
         }
 
-        // Add the library directory to sys.path.
-        sys.attr("path").attr("insert")(0, libPath.string());
+        // 2. Configure environment for embedded Python BEFORE Py_Initialize.
+#ifdef _WIN32
+        const std::string libStr = libPath.string();
 
-        // Verify importability.
+        _putenv_s("PYTHONHOME",             libStr.c_str());
+        _putenv_s("PYTHONDONTWRITEBYTECODE", "1");
+        _putenv_s("PYTHONNOUSERSITE",        "1");
+
+        // Help the DLL loader find python312.dll from the bundle.
+        SetDllDirectoryA(libStr.c_str());
+
+        // Prepend the bundle to PATH so dependent DLLs (libcrypto, etc.) are found.
+        if (const char* oldPath = std::getenv("PATH")) {
+            std::string newPath = libStr + ";" + oldPath;
+            _putenv_s("PATH", newPath.c_str());
+        }
+#else
+        const std::string libStr = libPath.string();
+        setenv("PYTHONHOME",             libStr.c_str(), 1);
+        setenv("PYTHONDONTWRITEBYTECODE", "1",            1);
+        setenv("PYTHONNOUSERSITE",        "1",            1);
+#endif
+
+        // 3. Create the interpreter.
+        interpreter_ = std::make_unique<py::scoped_interpreter>();
+
+        py::gil_scoped_acquire gil;
+        auto sys = py::module_::import("sys");
+
+        // 4. Configure sys.path: bundle root + site-packages.
+        sys.attr("path").attr("insert")(0, libStr);
+
+        std::filesystem::path sitePackages = libPath / "site-packages";
+        if (std::filesystem::exists(sitePackages)) {
+            sys.attr("path").attr("insert")(0, sitePackages.string());
+        }
+
+        // 5. Verify importability of core modules.
         try {
             py::module_::import("mesh_crypto");
             py::module_::import("mesh_node_db");
@@ -66,9 +90,10 @@ bool PythonRuntimeModule::onInitialize() {
             return false;
         }
 
-        std::cout << "[PythonRuntime] initialized (lib: "
-                  << libPath.string() << ")\n";
+        std::cout << "[PythonRuntime] initialized (bundle: "
+                  << libStr << ")\n";
         return true;
+
     } catch (const std::exception& e) {
         std::cerr << "[PythonRuntime] init error: " << e.what() << "\n";
         interpreter_.reset();
@@ -79,7 +104,5 @@ bool PythonRuntimeModule::onInitialize() {
 void PythonRuntimeModule::onShutdown() {
     // interpreter_ is destroyed here; all Python objects in other modules
     // must already be released before this point (guaranteed by dependency order).
-    // Do NOT acquire the GIL here: scoped_interpreter destructor handles it
-    // internally, and re-acquiring after Py_Finalize is undefined behaviour.
     interpreter_.reset();
 }

@@ -2,12 +2,19 @@ include_guard()
 
 function(DetectSystemParams)
 
+  # Detect architecture from CMAKE_SYSTEM_PROCESSOR.
   if(NOT DEFINED WYVERN_ARCHITECTURE)
-    include(TargetArch)
-    target_architecture(WYVERN_ARCHITECTURE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+      set(WYVERN_ARCHITECTURE "x86_64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86|x86")
+      set(WYVERN_ARCHITECTURE "i386")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+      set(WYVERN_ARCHITECTURE "aarch64")
+    else()
+      set(WYVERN_ARCHITECTURE "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
   endif()
 
-  # Either TRUE or FALSE
   if(NOT DEFINED WYVERN_LITTLE_ENDIAN)
     include(TestBigEndian)
     test_big_endian(BIGENDIAN)
@@ -18,8 +25,6 @@ function(DetectSystemParams)
     endif()
   endif()
 
-
-  # System name, like windows, macos, linux, freebsd, or (generic) unix
   if(NOT DEFINED WYVERN_SYSTEM)
     if(WIN32)
       set(WYVERN_SYSTEM "windows")
@@ -44,7 +49,6 @@ function(DetectSystemParams)
     endif()
   endif()
 
-  # C/C++ compiler ID, like clang, gnu, or msvc
   if(NOT DEFINED WYVERN_COMPILER)
     if(NOT CMAKE_C_COMPILER_ID STREQUAL CMAKE_CXX_COMPILER_ID)
       message(FATAL_ERROR "C and C++ compiler id do not match, unsupported build configuration")
@@ -61,8 +65,7 @@ function(DetectSystemParams)
     endif()
   endif()
 
-  # Enable OPTIONs based on the discovered system / environment...
-
+  # Enable OPTIONs based on the discovered system / environment.
   if(WYVERN_COMPILER STREQUAL "gnu")
     option(WYVERN_ENABLE_STATIC_LIBGCC_LIBSTDCXX "Statically link libgcc and libstdc++" OFF)
     option(WYVERN_ENABLE_GCC_PROFILING "Enable gcc/g++ profiling via the -pg flag" OFF)
@@ -79,49 +82,44 @@ function(DetectSystemParams)
   message(STATUS "System family: ${WYVERN_SYSTEM_FAMILY}")
   message(STATUS "C/C++ compiler: ${WYVERN_COMPILER}")
 
-  # Set a cmake variable to true and define a corresponding C/C++ definition
-  function(SET_FLAG flagValue)
-    set(${flagValue} TRUE PARENT_SCOPE)
+  # Set a cmake CACHE variable and define a corresponding C/C++ definition.
+  # Using CACHE INTERNAL so the variable is visible outside this function.
+  function(_wyvern_set_flag flagValue)
+    set(${flagValue} TRUE CACHE INTERNAL "" FORCE)
     add_definitions(-D${flagValue})
   endfunction()
 
   if(WYVERN_LITTLE_ENDIAN)
-    set_flag(WYVERN_LITTLE_ENDIAN)
+    _wyvern_set_flag(WYVERN_LITTLE_ENDIAN)
   else()
-    set_flag(WYVERN_BIG_ENDIAN)
-  endif()
-
-  if(WYVERN_LITTLE_ENDIAN)
-    set_flag(WYVERN_LITTLE_ENDIAN)
-  else()
-    set_flag(WYVERN_BIG_ENDIAN)
+    _wyvern_set_flag(WYVERN_BIG_ENDIAN)
   endif()
 
   if(WYVERN_ARCHITECTURE STREQUAL "i386")
-    set_flag(WYVERN_ARCHITECTURE_I386)
+    _wyvern_set_flag(WYVERN_ARCHITECTURE_I386)
   elseif(WYVERN_ARCHITECTURE STREQUAL "x86_64")
-    set_flag(WYVERN_ARCHITECTURE_X86_64)
+    _wyvern_set_flag(WYVERN_ARCHITECTURE_X86_64)
   endif()
 
   if(WYVERN_SYSTEM STREQUAL "windows")
-    set_flag(WYVERN_SYSTEM_WINDOWS)
+    _wyvern_set_flag(WYVERN_SYSTEM_WINDOWS)
   elseif(WYVERN_SYSTEM STREQUAL "macos")
-    set_flag(WYVERN_SYSTEM_MACOS)
+    _wyvern_set_flag(WYVERN_SYSTEM_MACOS)
   elseif(WYVERN_SYSTEM STREQUAL "linux")
-    set_flag(WYVERN_SYSTEM_LINUX)
+    _wyvern_set_flag(WYVERN_SYSTEM_LINUX)
   endif()
 
   if(WYVERN_SYSTEM_FAMILY STREQUAL "windows")
-    set_flag(WYVERN_SYSTEM_FAMILY_WINDOWS)
+    _wyvern_set_flag(WYVERN_SYSTEM_FAMILY_WINDOWS)
   elseif(WYVERN_SYSTEM_FAMILY STREQUAL "unix")
-    set_flag(WYVERN_SYSTEM_FAMILY_UNIX)
+    _wyvern_set_flag(WYVERN_SYSTEM_FAMILY_UNIX)
   endif()
 
   if(WYVERN_COMPILER STREQUAL "gnu")
-    set_flag(WYVERN_COMPILER_GNU)
+    _wyvern_set_flag(WYVERN_COMPILER_GNU)
   elseif(WYVERN_COMPILER STREQUAL "clang")
-    set_flag(WYVERN_COMPILER_CLANG)
+    _wyvern_set_flag(WYVERN_COMPILER_CLANG)
   elseif(WYVERN_COMPILER STREQUAL "msvc")
-    set_flag(WYVERN_COMPILER_MSVC)
+    _wyvern_set_flag(WYVERN_COMPILER_MSVC)
   endif()
 endfunction()

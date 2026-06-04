@@ -1,8 +1,8 @@
 ﻿{
   "version": 5,
   "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 23,
+    "major": 4,
+    "minor": 2,
     "patch": 0
   },
   "configurePresets": [
@@ -57,6 +57,12 @@
       "name": "windows-release-VS2026",
       "displayName": "Windows x64 (Visual Studio 2026)",
       "generator": "Visual Studio 18 2026"
+    },
+    {
+      "inherits": "windows-release",
+      "name": "windows-release-VS2022",
+      "displayName": "Windows x64 (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022"
     },
     {
       "inherits": "base",

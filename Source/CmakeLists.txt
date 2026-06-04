@@ -33,6 +33,9 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../cmake)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(DetectSystemParams)
+DetectSystemParams()
+
 if(POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
 endif()
@@ -110,17 +113,45 @@ option(WYVERN_BUILD_P2P_TESTS "Build P2P transport unit and loopback tests" ON)
 if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
 
-  # On Windows, prefer the system (registry) Python over vcpkg's debug Python.
-  # vcpkg's debug Python requires extension modules with _d suffix (_rust_d.pyd etc.)
-  # which third-party packages do not ship. Using the release Python in all
-  # build configs avoids this incompatibility.
-  if(WIN32)
-    set(Python3_FIND_REGISTRY FIRST)
+  # === Embedded Python: no system Python required ===
+  include(BootstrapPythonSDK)
+  BootstrapPythonSDK()
+
+  include(BootstrapPythonRuntime)
+  BootstrapPythonRuntime()
+
+  # Create IMPORTED target for the embedded Python SDK.
+  if(NOT TARGET Python3::Python)
+    add_library(Python3::Python SHARED IMPORTED)
+    if(WYVERN_SYSTEM_FAMILY_WINDOWS)
+      set_target_properties(Python3::Python PROPERTIES
+        IMPORTED_IMPLIB   "${PYTHON_SDK_ROOT}/libs/python312.lib"
+        IMPORTED_LOCATION "${PYTHON_SDK_ROOT}/python312.dll"
+        INTERFACE_INCLUDE_DIRECTORIES "${PYTHON_SDK_ROOT}/include"
+      )
+    else()
+      set_target_properties(Python3::Python PROPERTIES
+        IMPORTED_LOCATION "${PYTHON_SDK_ROOT}/lib/libpython3.12.so"
+        INTERFACE_INCLUDE_DIRECTORIES "${PYTHON_SDK_ROOT}/include/python3.12"
+      )
+    endif()
   endif()
-  # Do not append debug postfix when searching for the Python library.
-  set(Python3_DEBUG_POSTFIX "")
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-  find_package(pybind11 CONFIG REQUIRED)
+
+  # pybind11 via FetchContent (header-only, no vcpkg Python dependency).
+  # Sources are cached in EXTERNALS (persistent, one download ever).
+  # Subbuild stays inside the build tree (generator-specific, regenerated on fresh).
+  include(FetchContent)
+  set(_pybind11_src_dir "${CMAKE_SOURCE_DIR}/../EXTERNALS/_fetchcontent_cache/pybind11-src")
+  FetchContent_Declare(pybind11
+    URL      https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz
+    URL_HASH SHA256=e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20
+    SOURCE_DIR        "${_pybind11_src_dir}"
+    BINARY_DIR        "${CMAKE_BINARY_DIR}/_deps/pybind11-build"
+    SUBBUILD_DIR      "${CMAKE_BINARY_DIR}/_deps/pybind11-subbuild"
+  )
+  set(PYBIND11_FINDPYTHON OFF CACHE BOOL "" FORCE)
+  set(PYBIND11_NOPYTHON   ON  CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(pybind11)
 
   add_executable(p2p_messenger
     Application/platform/P2pMessengerMain.cpp
@@ -156,12 +187,21 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       NOMINMAX
     )
     target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
-    # Force the release Python library even in Debug C++ builds.
-    # The debug Python DLL requires _d.pyd extensions; third-party packages
-    # only ship release .pyd files, so the debug Python will fail to import them.
-    if(Python3_LIBRARY_RELEASE)
-      target_link_libraries(p2p_messenger PRIVATE ${Python3_LIBRARY_RELEASE})
-    endif()
+  endif()
+
+  # Post-build: create junction to Python runtime next to executable.
+  if(WIN32)
+    add_custom_command(TARGET p2p_messenger POST_BUILD
+      COMMAND cmd /c "if not exist \"$<TARGET_FILE_DIR:p2p_messenger>\\python\" mklink /J \"$<TARGET_FILE_DIR:p2p_messenger>\\python\" \"${PYTHON_RUNTIME_DIR}\""
+      COMMENT "Creating junction to Python runtime..."
+    )
+  else()
+    add_custom_command(TARGET p2p_messenger POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E create_symlink
+        "${PYTHON_RUNTIME_DIR}"
+        "$<TARGET_FILE_DIR:p2p_messenger>/python"
+      COMMENT "Creating symlink to Python runtime..."
+    )
   endif()
 endif()
 

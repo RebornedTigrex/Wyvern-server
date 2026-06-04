@@ -1,44 +1,51 @@
 include_guard()
 
+# BootstrapPythonRuntime
+# Validates that the Python runtime bundle exists at EXTERNALS/Python.
+# The bundle contains python312.dll, python312.zip, site-packages/
+# (mesh_crypto, mesh_node_db, cryptography, etc.) and is used at runtime.
+#
+# Currently the bundle is placed manually (or will be downloaded from the
+# submodule's GitHub Releases as a RAR archive in the future).
+#
+# After calling BootstrapPythonRuntime(), the variable PYTHON_RUNTIME_DIR
+# is set as a CACHE PATH pointing to the runtime directory.
+#
+# Set WYVERN_PYTHON_RUNTIME_URL to enable automatic download
+# (not yet implemented - placeholder for submodule Releases integration).
+
 function(BootstrapPythonRuntime)
-    # cmake/BootstrapPythonRuntime.cmake
-    include(FetchContent)
+    # Configurable URL for future auto-download from submodule releases.
+    set(WYVERN_PYTHON_RUNTIME_URL "" CACHE STRING
+        "URL to Python runtime bundle (RAR/ZIP). Leave empty to use local EXTERNALS/Python.")
 
-    # === Пин версии (обновляй когда нужно) ===
-    set(PBS_RELEASE "20260510")                    # ← актуально на май 2026
-    set(PBS_PYTHON_VERSION "3.14.5")               # или 3.13.x
+    set(_runtime_dir "${CMAKE_SOURCE_DIR}/../EXTERNALS/Python")
 
-    # Определяем нужный архив под платформу
     if(WYVERN_SYSTEM_FAMILY_WINDOWS)
-        set(PBS_PLATFORM "x86_64-pc-windows-msvc")
-        set(PBS_EXT "zip")
-    elseif(WYVERN_SYSTEM_FAMILY_UNIX AND WYVERN_ARCHITECTURE_X86_64)
-        set(PBS_PLATFORM "x86_64-unknown-linux-gnu")
-        set(PBS_EXT "tar.gz")
-    elseif(WYVERN_SYSTEM_FAMILY_UNIX AND CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-        set(PBS_PLATFORM "aarch64-unknown-linux-gnu")
-        set(PBS_EXT "tar.gz")
+        set(_marker "${_runtime_dir}/python312.dll")
     else()
-        message(FATAL_ERROR "Unsupported platform for python-build-standalone")
+        set(_marker "${_runtime_dir}/bin/python3")
     endif()
 
-    set(PBS_FILENAME "cpython-${PBS_PYTHON_VERSION}+${PBS_RELEASE}-${PBS_PLATFORM}-install_only_stripped.${PBS_EXT}")
-    set(PBS_URL "https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${PBS_FILENAME}")
-
-    set(PYTHON_RUNTIME_DIR "${CMAKE_SOURCE_DIR}/EXTERNALS/python-standalone/${PBS_PLATFORM}")
-
-    # Скачиваем и распаковываем один раз
-    if(NOT EXISTS "${PYTHON_RUNTIME_DIR}/python")
-        message(STATUS "Downloading portable Python runtime (${PBS_PLATFORM})...")
-        FetchContent_Declare(python_standalone
-            URL ${PBS_URL}
-            SOURCE_DIR ${PYTHON_RUNTIME_DIR}
+    if(EXISTS "${_marker}")
+        message(STATUS "[BootstrapPythonRuntime] Runtime found at ${_runtime_dir}")
+    elseif(WYVERN_PYTHON_RUNTIME_URL STREQUAL "")
+        message(WARNING
+            "[BootstrapPythonRuntime] Runtime not found at ${_runtime_dir} "
+            "and WYVERN_PYTHON_RUNTIME_URL is not set.\n"
+            "  Place the Python runtime bundle into EXTERNALS/Python/ or set the URL.\n"
+            "  The p2p_messenger will build but will not run without the runtime.")
+    else()
+        # Future: download and extract from WYVERN_PYTHON_RUNTIME_URL
+        message(STATUS "[BootstrapPythonRuntime] Downloading runtime from ${WYVERN_PYTHON_RUNTIME_URL}...")
+        include(FetchContent)
+        FetchContent_Declare(python_runtime
+            URL                  "${WYVERN_PYTHON_RUNTIME_URL}"
+            SOURCE_DIR           "${_runtime_dir}"
             DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         )
-        FetchContent_MakeAvailable(python_standalone)
-        message(STATUS "Python runtime ready at: ${PYTHON_RUNTIME_DIR}")
+        FetchContent_MakeAvailable(python_runtime)
     endif()
 
-    # Передаём путь дальше
-    set(PYTHON_RUNTIME_PATH "${PYTHON_RUNTIME_DIR}" CACHE PATH "Path to portable Python runtime" FORCE)
+    set(PYTHON_RUNTIME_DIR "${_runtime_dir}" CACHE PATH "Python runtime bundle directory" FORCE)
 endfunction()

@@ -4,6 +4,7 @@
     "boost-json",
     "boost-signals2",
     "boost-asio",
-    "boost-thread"
+    "boost-thread",
+    "boost-test"
   ]
 }
