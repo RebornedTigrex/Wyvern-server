@@ -76,6 +76,14 @@ public:
     // Returns cached public endpoint from last STUN call, or nullopt.
     std::optional<p2p::stun::StunEndpoint> publicEndpoint() const;
 
+    // Returns list of local IPv4 endpoints (address + listening port).
+    // Useful for direct LAN connections without STUN.
+    std::vector<std::pair<std::string, std::uint16_t>> getLocalEndpoints() const;
+
+    // Returns true if the address looks like a private/local address
+    // (10.x.x.x, 172.16-31.x.x, 192.168.x.x, 127.x.x.x).
+    static bool isLocalAddress(const std::string& address);
+
 protected:
     bool onInitialize() override;
     void onShutdown() override;

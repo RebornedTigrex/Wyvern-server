@@ -1,3 +1,5 @@
+#include <boost/asio/ip/host_name.hpp>
+
 #include "P2pConnectionModule.h"
 
 #include "managers/EventBus.h"
@@ -103,7 +105,6 @@ void P2pConnectionModule::requestStun() {
               << stunServer_ << ":" << stunPort_ << "\n";
 
     // Resolve STUN server and send.
-    // Explicitly filter to IPv4: the socket is opened as v4().
     auto resolver = std::make_shared<udp_resolver>(ioc_);
     resolver->async_resolve(
         stunServer_,
@@ -118,8 +119,6 @@ void P2pConnectionModule::requestStun() {
                 return;
             }
 
-            // The socket is IPv4-only — skip any IPv6 results to avoid
-            // a silent send failure (address-family mismatch).
             udp_endpoint stunEp;
             bool found = false;
             for (const auto& entry : results) {
@@ -141,13 +140,11 @@ void P2pConnectionModule::requestStun() {
                       << stunEp.address().to_string() << ":" << stunEp.port()
                       << " (timeout " << stunTimeoutMs_ << " ms)\n";
 
-            // Start timeout: if no response arrives, clear pending state
-            // so the caller can retry.
             stunTimeoutTimer_->expires_after(
                 std::chrono::milliseconds(stunTimeoutMs_));
             stunTimeoutTimer_->async_wait(
                 [this](const boost::system::error_code& ec) {
-                    if (ec) return; // cancelled by handleStunResponse
+                    if (ec) return;
                     if (stunPending_.exchange(false)) {
                         std::cerr << "[P2pConnection] STUN timed out after "
                                   << stunTimeoutMs_ << " ms\n";
@@ -168,8 +165,12 @@ void P2pConnectionModule::connectToPeer(const std::string& address, std::uint16_
     }
 
     peerEndpoint_ = udp_endpoint{addr, port};
+
+    const bool isLocal = isLocalAddress(address);
     std::cout << "[P2pConnection] starting hole punch to "
-              << address << ":" << port << "\n";
+              << address << ":" << port
+              << (isLocal ? " (LAN mode)" : " (public/STUN mode)") << "\n";
+
     startProbeTimer();
 }
 
@@ -237,7 +238,6 @@ void P2pConnectionModule::handleStunResponse(
 {
     if (!stunPending_.load()) return;
 
-    // Cancel timeout: we got a response in time.
     if (stunTimeoutTimer_) {
         stunTimeoutTimer_->cancel();
     }
@@ -300,14 +300,11 @@ void P2pConnectionModule::handleMashPacket(
 }
 
 void P2pConnectionModule::handleProbe() {
-    // Always reply with ACK when we receive a PROBE.
     sendAck();
-    // Mark connected: receiving PROBE means the peer can reach us.
     if (!connected_.load()) markConnected();
 }
 
 void P2pConnectionModule::handleAck() {
-    // Receiving ACK means the peer got our PROBE.
     if (!connected_.load()) markConnected();
     stopProbeTimer();
 }
@@ -319,7 +316,6 @@ void P2pConnectionModule::handleAck() {
 void P2pConnectionModule::startProbeTimer() {
     probing_.store(true);
 
-    // Timeout timer — fires once after probeTimeoutMs_.
     probeTimeoutTimer_->expires_after(
         std::chrono::milliseconds(probeTimeoutMs_));
     probeTimeoutTimer_->async_wait([this](const boost::system::error_code& ec) {
@@ -376,6 +372,82 @@ void P2pConnectionModule::markConnected() {
         ev.peerPort    = peerEndpoint_.port();
         bus->publish(std::move(ev));
     }
+}
+
+// ---------------------------------------------------------------------------
+// LAN helpers (for Variant A - local network support)
+// ---------------------------------------------------------------------------
+
+bool P2pConnectionModule::isLocalAddress(const std::string& address)
+{
+    boost::system::error_code ec;
+    auto addr = boost::asio::ip::make_address(address, ec);
+    if (ec || !addr.is_v4())
+        return false;
+
+    auto v4 = addr.to_v4();
+    auto bytes = v4.to_bytes();
+
+    // loopback
+    if (v4.is_loopback())
+        return true;
+
+    // 10.0.0.0/8
+    if (bytes[0] == 10)
+        return true;
+
+    // 172.16.0.0/12
+    if (bytes[0] == 172 && (bytes[1] >= 16 && bytes[1] <= 31))
+        return true;
+
+    // 192.168.0.0/16
+    if (bytes[0] == 192 && bytes[1] == 168)
+        return true;
+
+    return false;
+}
+
+std::vector<std::pair<std::string, std::uint16_t>>
+P2pConnectionModule::getLocalEndpoints() const
+{
+    std::vector<std::pair<std::string, std::uint16_t>> result;
+
+    // Всегда добавляем 0.0.0.0
+    result.emplace_back("0.0.0.0", localPort_);
+
+    try {
+        boost::system::error_code ec;
+
+        // Правильный вызов host_name (в пространстве boost::asio, а не boost::asio::ip)
+        std::string hostname = boost::asio::ip::host_name(ec);
+
+        if (!ec && !hostname.empty()) {
+            boost::asio::ip::udp::resolver resolver(ioc_);
+            auto endpoints = resolver.resolve(hostname, "", ec);
+
+            for (const auto& ep : endpoints) {
+                if (!ec && ep.endpoint().address().is_v4()) {
+                    std::string ip = ep.endpoint().address().to_string();
+
+                    // Добавляем только уникальные адреса
+                    bool exists = false;
+                    for (const auto& item : result) {
+                        if (item.first == ip) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        result.emplace_back(ip, localPort_);
+                    }
+                }
+            }
+        }
+    } catch (...) {
+        // Игнорируем ошибки
+    }
+
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +536,7 @@ core::contracts::CommandResult P2pConnectionModule::cmdStatus(
 {
     std::ostringstream oss;
     oss << "connected=" << (connected_.load() ? "yes" : "no");
+
     {
         std::lock_guard<std::mutex> lock(endpointMutex_);
         if (publicEndpoint_) {
@@ -473,10 +546,23 @@ core::contracts::CommandResult P2pConnectionModule::cmdStatus(
             oss << " public=unknown (run p2pconn.stun)";
         }
     }
+
     if (connected_.load()) {
+        const bool local = isLocalAddress(peerEndpoint_.address().to_string());
         oss << " peer=" << peerEndpoint_.address().to_string()
-            << ":" << peerEndpoint_.port();
+            << ":" << peerEndpoint_.port()
+            << (local ? " (LAN)" : "");
     }
+
+    auto locals = getLocalEndpoints();
+    if (!locals.empty()) {
+        oss << "\nlocal_endpoints: ";
+        for (size_t i = 0; i < locals.size(); ++i) {
+            if (i > 0) oss << ", ";
+            oss << locals[i].first << ":" << locals[i].second;
+        }
+    }
+
     return core::contracts::CommandResult::success(oss.str());
 }
 
