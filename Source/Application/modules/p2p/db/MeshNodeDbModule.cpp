@@ -226,7 +226,7 @@ void MeshNodeDbModule::ensureChatSetup(
         auto rec = ChatRecord(
             "chat_id"_a    = chatId,
             "chat_type"_a  = "direct",
-            "chat_name"_a  = py::none(),
+            "chat_name"_a  = "None",
             "created_at"_a = nowSec,
             "updated_at"_a = nowSec
         );
