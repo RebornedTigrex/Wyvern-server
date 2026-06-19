@@ -161,6 +161,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     Application/modules/p2p/crypto/MeshCryptoModule.cpp
     Application/modules/p2p/db/MeshNodeDbModule.cpp
     Application/modules/p2p/app/P2pMessengerModule.cpp
+    Application/modules/dataStorage/InMemoryRelayStore.cpp
   )
 
   target_include_directories(p2p_messenger
@@ -212,7 +213,9 @@ if(WYVERN_BUILD_P2P_TESTS)
     Tests/p2p/main.cpp
     Tests/p2p/StunProtocolTests.cpp
     Tests/p2p/P2pLoopbackTests.cpp
+    Tests/p2p/DataStorageTests.cpp
     Application/modules/p2p/transport/P2pConnectionModule.cpp
+    Application/modules/dataStorage/InMemoryRelayStore.cpp
   )
 
   target_include_directories(p2p_tests
