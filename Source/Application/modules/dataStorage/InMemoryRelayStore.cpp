@@ -21,7 +21,7 @@ std::string InMemoryRelayStore::generateMessageId() {
     return oss.str();
 }
 
-bool InMemoryRelayStore::registerPeer(const RegisteredPeer& peer) {
+bool InMemoryRelayStore::registerPeer(const IRelayStore::RegisteredPeer& peer) {
     std::lock_guard<std::mutex> lock(mutex_);
     registeredPeers_[peer.overlayId] = peer;
     return true;
@@ -32,7 +32,7 @@ bool InMemoryRelayStore::unregisterPeer(const std::string& overlayId) {
     return registeredPeers_.erase(overlayId) > 0;
 }
 
-std::optional<RegisteredPeer> InMemoryRelayStore::getPeer(const std::string& overlayId) {
+std::optional<IRelayStore::RegisteredPeer> InMemoryRelayStore::getPeer(const std::string& overlayId) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = registeredPeers_.find(overlayId);
     if (it != registeredPeers_.end()) {
@@ -46,9 +46,9 @@ bool InMemoryRelayStore::isPeerRegistered(const std::string& overlayId) {
     return registeredPeers_.count(overlayId) > 0;
 }
 
-std::vector<RegisteredPeer> InMemoryRelayStore::getAllPeers() {
+std::vector<IRelayStore::RegisteredPeer> InMemoryRelayStore::getAllPeers() {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<RegisteredPeer> result;
+    std::vector<IRelayStore::RegisteredPeer> result;
     result.reserve(registeredPeers_.size());
     for (const auto& pair : registeredPeers_) {
         result.push_back(pair.second);
@@ -66,7 +66,7 @@ std::string InMemoryRelayStore::createSession(
         std::chrono::system_clock::now().time_since_epoch()
     ).count();
 
-    RelaySession session;
+    IRelayStore::RelaySession session;
     session.sessionId = sessionId;
     session.peerAOverlayId = peerAOverlayId;
     session.peerBOverlayId = peerBOverlayId;
@@ -87,7 +87,7 @@ bool InMemoryRelayStore::closeSession(const std::string& sessionId) {
     return false;
 }
 
-std::optional<RelaySession> InMemoryRelayStore::getSession(const std::string& sessionId) {
+std::optional<IRelayStore::RelaySession> InMemoryRelayStore::getSession(const std::string& sessionId) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = sessions_.find(sessionId);
     if (it != sessions_.end()) {
@@ -96,11 +96,11 @@ std::optional<RelaySession> InMemoryRelayStore::getSession(const std::string& se
     return std::nullopt;
 }
 
-std::string InMemoryRelayStore::enqueuePendingMessage(const PendingMessage& message) {
+std::string InMemoryRelayStore::enqueuePendingMessage(const IRelayStore::PendingMessage& message) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     std::string messageId = generateMessageId();
-    PendingMessage msg = message;
+    IRelayStore::PendingMessage msg = message;
     msg.messageId = messageId;
 
     size_t index = pendingMessages_.size();
@@ -110,14 +110,14 @@ std::string InMemoryRelayStore::enqueuePendingMessage(const PendingMessage& mess
     return messageId;
 }
 
-std::optional<PendingMessage> InMemoryRelayStore::dequeueNextPendingMessage() {
+std::optional<IRelayStore::PendingMessage> InMemoryRelayStore::dequeueNextPendingMessage() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (pendingMessages_.empty()) {
         return std::nullopt;
     }
 
-    PendingMessage msg = pendingMessages_.front();
+    IRelayStore::PendingMessage msg = pendingMessages_.front();
     pendingMessages_.pop_front();
 
     // Обновляем индекс для оставшихся сообщений
@@ -154,11 +154,11 @@ bool InMemoryRelayStore::acknowledgeMessage(const std::string& messageId) {
     return true;
 }
 
-std::vector<PendingMessage> InMemoryRelayStore::getPendingMessagesFor(
+std::vector<IRelayStore::PendingMessage> InMemoryRelayStore::getPendingMessagesFor(
     const std::string& targetOverlayId) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    std::vector<PendingMessage> result;
+    std::vector<IRelayStore::PendingMessage> result;
     for (const auto& msg : pendingMessages_) {
         if (msg.targetOverlayId == targetOverlayId) {
             result.push_back(msg);
