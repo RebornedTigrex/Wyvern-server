@@ -15,6 +15,9 @@
 // Business logic
 #include "p2p/app/P2pMessengerModule.h"
 
+// Relay signaling (NAT traversal)
+#include "p2p/relay/RelaySignalingModule.h"
+
 // Core console
 #include "modules/console/InteractiveConsoleModule.h"
 
@@ -47,6 +50,12 @@ void registerP2pMessengerPlatform(Core& core) {
     //    (depends on P2pConnectionModule, MeshCryptoModule, MeshNodeDbModule).
     reg.registerModule<P2pMessengerModule>(
         core.moduleConfig<P2pMessengerModule>(),
+        core.ioContext());
+
+    // 5.5. Relay signaling client — WebSocket to relay server for NAT fallback
+    //      (standalone, uses EventBus for coordination).
+    reg.registerModule<Wyvern::P2P::Relay::RelaySignalingModule>(
+        core.moduleConfig<Wyvern::P2P::Relay::RelaySignalingModule>(),
         core.ioContext());
 
     // 6. Interactive console — registered last so 'list' shows all modules.

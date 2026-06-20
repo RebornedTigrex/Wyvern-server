@@ -161,6 +161,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     Application/modules/p2p/crypto/MeshCryptoModule.cpp
     Application/modules/p2p/db/MeshNodeDbModule.cpp
     Application/modules/p2p/app/P2pMessengerModule.cpp
+    Application/modules/p2p/relay/RelaySignalingModule.cpp
     Application/modules/dataStorage/InMemoryRelayStore.cpp
   )
 
@@ -170,6 +171,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       ${CMAKE_SOURCE_DIR}/Application/modules
       ${CMAKE_SOURCE_DIR}/Application/modules/p2p
       ${CMAKE_SOURCE_DIR}/Application/modules/Transport
+      ${CMAKE_SOURCE_DIR}/Application/relay
   )
 
   target_link_libraries(p2p_messenger
@@ -203,6 +205,39 @@ if(WYVERN_BUILD_P2P_MESSENGER)
         "$<TARGET_FILE_DIR:p2p_messenger>/python"
       COMMENT "Creating symlink to Python runtime..."
     )
+  endif()
+endif()
+
+if(WYVERN_BUILD_P2P_MESSENGER)
+  # Minimal relay server for NAT traversal (wyvern_relay)
+  add_executable(wyvern_relay
+    Application/relay/RelayServerMain.cpp
+    Application/relay/RelayServer.cpp
+    Application/modules/dataStorage/InMemoryRelayStore.cpp
+  )
+
+  target_include_directories(wyvern_relay
+    PRIVATE
+      ${CMAKE_SOURCE_DIR}/Application/platform
+      ${CMAKE_SOURCE_DIR}/Application/modules
+      ${CMAKE_SOURCE_DIR}/Application/modules/p2p
+      ${CMAKE_SOURCE_DIR}/Application/relay
+  )
+
+  target_link_libraries(wyvern_relay
+    PRIVATE
+      WyvernCore
+      Boost::system
+      Boost::thread
+  )
+
+  if(WIN32)
+    target_compile_definitions(wyvern_relay PRIVATE
+      _WIN32_WINNT=0x0A00
+      WIN32_LEAN_AND_MEAN
+      NOMINMAX
+    )
+    target_link_libraries(wyvern_relay PRIVATE ws2_32 mswsock)
   endif()
 endif()
 
