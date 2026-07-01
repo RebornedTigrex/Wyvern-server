@@ -31,8 +31,11 @@ void registerP2pMessengerPlatform(Core& core) {
 
     // 1. Python runtime (no dependencies).
     reg.registerModule<PythonRuntimeModule>(
+#if defined(PYTHON_HOME_PATH)//Отключаем параметры конфига для него в дебаг режиме: Не нужно, ибо путь будет браться от проекта через параметры сборки
+    );
+#else
         core.moduleConfig<PythonRuntimeModule>());
-
+#endif
     // 2. Transport (no Core-module dependencies; uses EventBus singleton).
     reg.registerModule<P2pConnectionModule>(
         core.moduleConfig<P2pConnectionModule>(),

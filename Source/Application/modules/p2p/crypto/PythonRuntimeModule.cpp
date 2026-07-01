@@ -14,10 +14,16 @@
 
 namespace py = pybind11;
 
+#if defined(PYTHON_HOME_PATH)
+PythonRuntimeModule::PythonRuntimeModule()
+    : BaseModule("Python Runtime"),
+        extLibPath_(PYTHON_HOME_PATH){}
+#else
+
 PythonRuntimeModule::PythonRuntimeModule(const core::runtime::ConfigSection& cfg)
     : BaseModule("Python Runtime"),
-      extLibPath_(cfg.value<std::string>("extLibPath", "Application-Source/python"))
-{}
+        extLibPath_(cfg.value<std::string>("extLibPath", "python")){}
+#endif
 
 PythonRuntimeModule::~PythonRuntimeModule() {
     interpreter_.reset();
@@ -31,6 +37,8 @@ bool PythonRuntimeModule::onInitialize() {
         wchar_t exePathW[MAX_PATH] = {0};
         GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
         baseDir = std::filesystem::path(exePathW).parent_path();
+    
+
 #else
         baseDir = std::filesystem::current_path();
 #endif
@@ -46,13 +54,15 @@ bool PythonRuntimeModule::onInitialize() {
         }
 
         const std::string libStr = libPath.string();
-        std::filesystem::path sitePkgs = libPath / "site-packages";
-        std::filesystem::path zipFile  = libPath / "python312.zip";
+        std::filesystem::path sitePkgs  = libPath / "site-packages";
+        std::filesystem::path zipFile   = libPath / "python312.zip";
+        std::filesystem::path pythonDll = libPath / "python312.dll";
 
         // === 2. Собираем PYTHONPATH вручную ===
         std::string pythonPath;
-        if (std::filesystem::exists(sitePkgs)) pythonPath += sitePkgs.string() + ";";
-        if (std::filesystem::exists(zipFile))  pythonPath += zipFile.string() + ";";
+        if (std::filesystem::exists(sitePkgs))   pythonPath += sitePkgs.string() + ";";
+        if (std::filesystem::exists(zipFile))    pythonPath += zipFile.string() + ";";
+        if (std::filesystem::exists(pythonDll))  pythonPath += pythonDll.string() + ";";
         pythonPath += libStr;
 
 #ifdef _WIN32
@@ -75,14 +85,14 @@ bool PythonRuntimeModule::onInitialize() {
         py::gil_scoped_acquire gil;
         auto sys = py::module_::import("sys");
 
-        // На всякий случай чистим ещё раз
-        sys.attr("path").attr("clear");
-        if (std::filesystem::exists(sitePkgs)) sys.attr("path").attr("append")(sitePkgs.string());
-        if (std::filesystem::exists(zipFile))  sys.attr("path").attr("append")(zipFile.string());
-        sys.attr("path").attr("append")(libStr);
+        // // На всякий случай чистим ещё раз
+        // sys.attr("path").attr("clear");
+        // if (std::filesystem::exists(sitePkgs)) sys.attr("path").attr("append")(sitePkgs.string());
+        // if (std::filesystem::exists(zipFile))  sys.attr("path").attr("append")(zipFile.string());
+        // sys.attr("path").attr("append")(libStr);
 
-        sys.attr("prefix") = libStr;
-        sys.attr("exec_prefix") = libStr;
+        // sys.attr("prefix") = libStr;
+        // sys.attr("exec_prefix") = libStr;
 
         // Проверка
         py::module_::import("mesh_crypto");

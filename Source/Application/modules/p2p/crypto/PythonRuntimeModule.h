@@ -25,15 +25,19 @@ class PythonRuntimeModule : public BaseModule {
 public:
     static std::string moduleType() { return "p2p.python_runtime"; }
 
+#if !defined(PYTHON_HOME_PATH)
     static boost::json::object defaults() {
         boost::json::object obj;
         // Relative path from CWD to the external Python library root.
         // Override in config to use an absolute path.
-        obj["extLibPath"] = "Application-Source/python";
+        obj["extLibPath"] = "python";
         return obj;
     }
 
     explicit PythonRuntimeModule(const core::runtime::ConfigSection& cfg);
+#else
+    explicit PythonRuntimeModule();
+#endif
 
     ~PythonRuntimeModule() override;
 
