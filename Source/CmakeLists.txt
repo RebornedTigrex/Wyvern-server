@@ -71,8 +71,8 @@ if(WYVERN_BUILD_P2P_MESSENGER)
   FetchContent_MakeAvailable(pybind11)
 
   add_executable(p2p_messenger
-    Application/platform/P2pMessengerMain.cpp
-    Application/platform/P2pPlatformModules.cpp
+    Application/main/P2pMessengerMain.cpp
+    Application/main/P2pPlatformModules.cpp
     Application/modules/p2p/transport/P2pConnectionModule.cpp
     Application/modules/p2p/crypto/PythonRuntimeModule.cpp
     Application/modules/p2p/crypto/MeshCryptoModule.cpp
@@ -85,7 +85,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 
   target_include_directories(p2p_messenger
     PRIVATE
-      ${CMAKE_SOURCE_DIR}/Application/platform
+      ${CMAKE_SOURCE_DIR}/Application/main
       ${CMAKE_SOURCE_DIR}/Application/modules
       ${CMAKE_SOURCE_DIR}/Application/modules/p2p
       ${CMAKE_SOURCE_DIR}/Application/modules/Transport
@@ -130,7 +130,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 
 #   target_include_directories(wyvern_relay
 #     PRIVATE
-#       ${CMAKE_SOURCE_DIR}/Application/platform
+#       ${CMAKE_SOURCE_DIR}/Application/main
 #       ${CMAKE_SOURCE_DIR}/Application/modules
 #       ${CMAKE_SOURCE_DIR}/Application/modules/p2p
 #       ${CMAKE_SOURCE_DIR}/Application/relay
