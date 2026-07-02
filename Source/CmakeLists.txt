@@ -79,6 +79,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     Application/modules/p2p/db/MeshNodeDbModule.cpp
     Application/modules/p2p/app/P2pMessengerModule.cpp
     Application/modules/p2p/relay/RelaySignalingModule.cpp
+    Application/relay/RelayServer.cpp
     Application/modules/dataStorage/InMemoryRelayStore.cpp
   )
 
@@ -112,8 +113,8 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     # Debug — папка в EXTERNALS (разработка)
     $<$<CONFIG:Debug>:PYTHON_HOME_PATH="${CMAKE_SOURCE_DIR}/../EXTERNALS/python">
 
-    # Release — папка рядом с exe (деплой)
-    $<$<CONFIG:Release>:PYTHON_HOME_PATH="$<TARGET_FILE_DIR:p2p_messenger>/python">
+    # # Release — папка рядом с exe (деплой)
+    # $<$<CONFIG:Release>:PYTHON_HOME_PATH="$<TARGET_FILE_DIR:p2p_messenger>/python">
   )
 
     # Опционально: для отладки в Visual Studio (только Debug)
@@ -123,7 +124,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 # if(WYVERN_BUILD_P2P_MESSENGER)
 #   # Minimal relay server for NAT traversal (wyvern_relay)
 #   add_executable(wyvern_relay
-#     Application/relay/RelayServerMain.cpp
 #     Application/relay/RelayServer.cpp
 #     Application/modules/dataStorage/InMemoryRelayStore.cpp
 #   )

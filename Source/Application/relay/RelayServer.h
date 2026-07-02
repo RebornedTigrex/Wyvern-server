@@ -1,99 +1,98 @@
 #pragma once
 
 #include "../modules/dataStorage/IRelayStore.h"
+#include "modules/BaseModule.h"
+#include "runtime/ConfigSection.h"
+
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
+#include <boost/json.hpp>
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
-#include <mutex>
+#include <vector>
 
 namespace Wyvern::Relay {
 
-// WebSocket stream type for relay server connections (plain WS, no TLS for prototype)
 using WsStream = boost::beast::websocket::stream<boost::asio::ip::tcp::socket>;
 
-/// Minimal relay server for symmetric NAT/CGNAT traversal via WebSocket
-///
-/// Responsibilities:
-/// - Listen for incoming WebSocket connections
-/// - Track registered peers by overlay ID
-/// - Forward RENDEZVOUS_REQUEST with peer candidates
-/// - Relay opaque RELAY_DATA messages between peers
-/// - Maintain ephemeral session state in IRelayStore
-///
-/// Protocol:
-/// - Clients send REGISTER with overlay_id -> server tracks them
-/// - Clients send RENDEZVOUS_REQUEST(target_overlay_id) -> server responds with peer candidates
-/// - Clients send RELAY_DATA(target_overlay_id, payload) -> server forwards to target
-///
-/// Security notes (prototype only):
-/// - No TLS (ws:// not wss://)
-/// - No client authentication beyond overlay-id registration
-/// - Server acts as dumb forwarder, does not inspect/decrypt payload
-class RelayServer {
+// RelayServer — transport-level relay module.
+//
+// Responsibilities:
+//  - Listen for incoming WebSocket connections.
+//  - Track registered peers by overlay ID.
+//  - Process REGISTER / RENDEZVOUS_REQUEST / RELAY_DATA frames.
+//  - Keep ephemeral relay state in IRelayStore.
+//  - Provide diagnostic status via module command.
+class RelayServer : public BaseModule {
 public:
-    RelayServer(boost::asio::io_context& ioc,
-               const std::string& host,
-               uint16_t port,
-               std::shared_ptr<Wyvern::DataStorage::IRelayStore> relay_store);
+    static std::string moduleType() { return "p2p.relay.server"; }
+
+    static boost::json::object defaults() {
+        boost::json::object obj;
+        obj["host"] = "0.0.0.0";
+        obj["port"] = 9002;
+        return obj;
+    }
+
+    RelayServer(const core::runtime::ConfigSection& cfg,
+                boost::asio::io_context& ioc,
+                std::shared_ptr<Wyvern::DataStorage::IRelayStore> relay_store);
 
     ~RelayServer();
 
-    /// Start listening for WebSocket connections
-    bool start();
+    std::string moduleKey() const override { return moduleType(); }
+    std::vector<core::contracts::CommandDescriptor> commands() override;
 
-    /// Stop the server gracefully
+    bool start();
     void stop();
 
-    /// Get number of currently connected clients
-    size_t getConnectedPeerCount() const;
-
-    /// Get human-readable status
+    std::size_t getConnectedPeerCount() const;
     std::string getStatus() const;
 
+protected:
+    bool onInitialize() override;
+    void onShutdown() override;
+
 private:
-    // --- Connection handler ---
+    core::contracts::CommandResult cmdStatus(const core::contracts::CommandArgs& args);
+
     void acceptConnections();
     void handleConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void startSessionRead(std::shared_ptr<WsStream> ws,
+                          std::shared_ptr<boost::beast::flat_buffer> buffer);
 
-    // --- Per-connection WebSocket handler ---
     struct ClientSession {
         std::string overlay_id;
         std::string session_id;
         bool registered = false;
-        // We don't keep the WebSocket here; ownership is in async handler
     };
 
-    // --- Message processing ---
     void processClientMessage(const std::string& overlay_id,
-                             const std::string& json_text);
-
-    // --- Protocol handlers ---
+                              const std::string& json_text);
     void handleRegister(const std::string& overlay_id,
-                       const std::string& client_session_id);
-
+                        const std::string& client_session_id);
     void handleRendezvousRequest(const std::string& requesting_overlay_id,
-                                const std::string& target_overlay_id);
-
+                                 const std::string& target_overlay_id);
     void handleRelayData(const std::string& sender_overlay_id,
-                       const std::string& target_overlay_id,
-                       const std::string& base64_payload);
+                         const std::string& target_overlay_id,
+                         const std::string& base64_payload);
 
-    // --- State ---
     boost::asio::io_context& ioc_;
     std::string listen_host_;
-    uint16_t listen_port_;
+    std::uint16_t listen_port_;
     std::shared_ptr<Wyvern::DataStorage::IRelayStore> relay_store_;
 
     std::unique_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
     mutable std::mutex clients_mutex_;
-    std::unordered_map<std::string, ClientSession> clients_;  // overlay_id -> session
-
-    bool running_ = false;
+    std::unordered_map<std::string, ClientSession> clients_;
+    std::atomic<bool> running_{false};
 };
 
 } // namespace Wyvern::Relay
