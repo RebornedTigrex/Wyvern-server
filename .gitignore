@@ -10,8 +10,8 @@
 
 **/build/
 
-!.agents/skills/build
-
+# Graphify: регенерируемый граф проекта (graphify update/extract)
+graphify-out/
 
 # User-specific files
 *.rsuser
