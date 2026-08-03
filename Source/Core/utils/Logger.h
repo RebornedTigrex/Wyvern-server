@@ -1,9 +1,10 @@
 ﻿#pragma once
 #include <mutex>
 #include <string>
+#include <queue>
 
 
-namespace utils{//TODO: Сделать очередь вывода
+namespace utils{
     class Logger {
     public:
         Logger(std::string name_);
@@ -14,15 +15,13 @@ namespace utils{//TODO: Сделать очередь вывода
     public:
         enum class Level { Info, Warning, Error, Debug };
 
-        void Log(Level eLevel, const std::string& sMsg);
+        void Log(Level level, const std::string& msg);
 
         std::string getName();
 
     private:
         void printTimestamp();
         void printName();
-
-        // std::mutex loggerMutex; 
     };
 }
 

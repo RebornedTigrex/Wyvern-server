@@ -31,6 +31,30 @@
       }
     },
     {
+      "name": "base-linux",
+      "hidden": true,
+      "architecture": { "value": "x64", "strategy": "external" },
+      "generator": "Ninja",
+      "toolchainFile": "ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_INSTALL_PREFIX": "${sourceParentDir}/install",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceParentDir}/triplets",
+        "CMAKE_VERBOSE_MAKEFILE": true,
+        "BUILD_TESTING": true
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioRemoteSettings/CMake/2.0": {
+          "sourceRootDir": "$ms{localSourceDir}\\..",
+          "remoteSourceRootDir": "$env{HOME}/.vs/wsl",
+          "copySourcesOptions": {
+            "method": "rsync",
+            "exclusionList": [ ".vs", ".git", "out", "dist", "attic", "build" ]
+          }
+        }
+      }
+    },
+    {
       "inherits": "base",
       "name": "windows-build",
       "displayName": "Windows x64",

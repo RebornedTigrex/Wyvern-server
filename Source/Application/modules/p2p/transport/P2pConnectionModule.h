@@ -2,7 +2,7 @@
 
 #include "P2pEvents.h"
 #include "StunProtocol.h"
-#include "modules/BaseModule.h"
+#include "objects/BaseModule.h"
 #include "runtime/ConfigSection.h"
 
 #include <boost/asio/io_context.hpp>
@@ -32,8 +32,6 @@
 // Does NOT know about crypto, DB, handshake protocol or CLI.
 class P2pConnectionModule : public BaseModule {
 public:
-    static std::string moduleType() { return "p2p.connection"; }
-
     static boost::json::object defaults() {
         boost::json::object obj;
         obj["localPort"]        = 9001;
@@ -49,7 +47,7 @@ public:
     P2pConnectionModule(const core::runtime::ConfigSection& cfg,
                         boost::asio::io_context& ioc);
 
-    std::string moduleKey() const override { return moduleType(); }
+    std::string moduleKey() const override { return "wyvern.connection"; }
 
     std::vector<core::contracts::CommandDescriptor> commands() override;
 

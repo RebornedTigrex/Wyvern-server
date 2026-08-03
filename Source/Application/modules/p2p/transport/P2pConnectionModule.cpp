@@ -1,9 +1,9 @@
 #include <boost/asio/ip/host_name.hpp>
 
-#include "P2pConnectionModule.h"
+#include "modules/p2p/transport/P2pConnectionModule.h"
 
 #include "managers/EventBus.h"
-#include "Transport/udp/UdpPacket.h"
+#include "modules/p2p/transport/UdpPacket.h"
 
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/post.hpp>
@@ -512,13 +512,13 @@ void P2pConnectionModule::sendMash(
 
 std::vector<core::contracts::CommandDescriptor> P2pConnectionModule::commands() {
     return {
-        { "p2pconn.stun",
+        { "stun",
           "Send STUN Binding Request to discover public endpoint",
           [this](const core::contracts::CommandArgs&) { return cmdStun({}); } },
-        { "p2pconn.status",
+        { "status",
           "Show connection state and public endpoint",
           [this](const core::contracts::CommandArgs&) { return cmdStatus({}); } },
-        { "p2pconn.disconnect",
+        { "disconnect",
           "Disconnect from current peer",
           [this](const core::contracts::CommandArgs&) { return cmdDisconnect({}); } },
     };
@@ -543,7 +543,7 @@ core::contracts::CommandResult P2pConnectionModule::cmdStatus(
             oss << " public=" << publicEndpoint_->address
                 << ":" << publicEndpoint_->port;
         } else {
-            oss << " public=unknown (run p2pconn.stun)";
+            oss << " public=unknown (run stun)";
         }
     }
 
