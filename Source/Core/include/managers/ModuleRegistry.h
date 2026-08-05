@@ -210,6 +210,7 @@ public:
     }
 
     template<typename T, typename... Args>
+    [[deprecated]]
     T* registerModule(Args&&... args) {
         static_assert(std::is_base_of_v<BaseModule, T>,
             "ModuleRegistry::registerModule<T>: T must derive from BaseModule.");
@@ -238,6 +239,31 @@ public:
         T* ptr = module.get();
         modules_[id] = std::move(module);
         return ptr;
+    }
+
+    void addUnregisteredModule(std::unique_ptr<BaseModule> module){
+        const ModuleId id = generateId();
+        module->setId(id);
+
+        if (modules_.find(id) != modules_.end()) {
+            throw std::runtime_error("Internal error: generated duplicate id " + std::to_string(id));
+        }
+        registerDependencyMetadata(id, *module);
+
+        // Автопроброс зависимостей: для каждого ключа из dependencies() находим
+        // уже зарегистрированный модуль и передаём указатель через onInject.
+        // registerDependencyMetadata уже гарантировал, что все зависимости есть в реестре.
+        for (const auto& depKey : module->dependencies()) {
+            core::contracts::IModule* dep = getModuleByKey(depKey);
+            module->onInject(depKey, dep);
+        }
+        
+
+        // Команды забираем ПОСЛЕ onInject: модуль может формировать дескрипторы
+        // с захватом внедрённых зависимостей.
+        registerCommandMetadataOrThrow(*module);
+
+        modules_[id] = std::move(module);
     }
 
     core::contracts::IModule* getModule(ModuleId id) {

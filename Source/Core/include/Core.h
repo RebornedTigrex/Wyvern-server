@@ -10,6 +10,7 @@
 #include <managers/ModuleRegistry.h>
 #include <runtime/ConfigSection.h>
 #include <runtime/RuntimeServices.h>
+#include <contracts/IModule.h>
 
 /**
  * @class Core
@@ -50,6 +51,12 @@ public:
 
     bool isInitialized() const;
 
+    template<typename T, typename... Args>
+    T* registerModule(Args&&... args) {
+        static_assert(std::is_base_of_v<BaseModule, T>,
+            "Core::registerModule<T>: T must derive from BaseModule.");
+        moduleRegistry.addUnregisteredModule(std::make_unique<T>(std::forward<Args>(args)...));
+    }
     /**
      * @brief Полный bootstrap: парсит CLI (--config|-c), грузит конфиг,
      *        создаёт RuntimeServices (включая io_context).
@@ -57,33 +64,7 @@ public:
      */
     bool bootstrap(int argc, char** argv);
 
-    /**
-     * @brief io_context, на котором работают все асинхронные модули.
-     *        Доступен только после успешного bootstrap().
-     */
-    boost::asio::io_context& ioContext();
-
-    /**
-     * @brief Возвращает секцию конфига для модуля T.
-     *        Использует T::moduleType() как ключ и T::defaults() как набор
-     *        значений по умолчанию для deep-merge.
-     *        При отсутствии полей помечает store как dirty (commitConfig запишет).
-     */
-    template <typename T>
-    core::runtime::ConfigSection moduleConfig() {
-        return configStore->moduleConfig(T::moduleKey(), T::defaults());
-    }
-
-    /**
-     * @brief Записывает текущее состояние ConfigStore обратно в файл,
-     *        если были добавлены дефолты. No-op, если ничего не менялось.
-     */
-    void commitConfig();
-
     void shutdown();
-
-    std::shared_ptr<EventBus> getEventBus() const;
-    std::shared_ptr<ModuleRegistry> getModuleRegistry() const;
 
     bool initializeModules();
     bool readyModules();
