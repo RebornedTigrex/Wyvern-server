@@ -11,6 +11,7 @@
 #include <runtime/ConfigSection.h>
 #include <runtime/RuntimeServices.h>
 
+namespace Wyvern{
 /**
  * @class Core
  * @brief Ядро приложения. Владеет EventBus, ModuleRegistry, ConfigStore и RuntimeServices.
@@ -91,3 +92,5 @@ public:
 
     std::string getStatus() const;
 };
+
+}

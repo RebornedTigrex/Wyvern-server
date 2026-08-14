@@ -1,5 +1,5 @@
-#include "Core.h"
-#include "P2pPlatformModules.h"
+#include "WyvernCore.h"
+#include "ModuleStaticRegistration.h"
 
 #include <csignal>
 #include <cstdlib>
@@ -31,13 +31,13 @@ static void setupAbortHandling() {
 
 int main(int argc, char* argv[]) {
     setupAbortHandling();
-    auto core = Core::instance();
+    auto core = Wyvern::Core::instance();
 
     if (!core->bootstrap(argc, argv)) {
         return EXIT_FAILURE;
     }
 
-    registerP2pMessengerPlatform(*core);
+    registerPlatformModules(*core);
 
     if (!core->initializeModules()) {
         std::cerr << "[main] module initialization failed\n";

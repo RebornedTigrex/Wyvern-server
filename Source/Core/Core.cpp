@@ -1,4 +1,4 @@
-﻿#include "Core.h"
+﻿#include "WyvernCore.h"
 
 #include <iostream>
 #include <string>
@@ -46,7 +46,7 @@ bool parseCli(int argc, char** argv, std::filesystem::path& outConfig) {
 
 } // namespace
 
-Core::Core()
+Wyvern::Core::Core()
     : eventBus(nullptr),
       moduleRegistry(nullptr),
       configStore(nullptr),
@@ -55,12 +55,12 @@ Core::Core()
       bootstrapped(false) {
 }
 
-std::shared_ptr<Core> Core::instance() {
-    static std::shared_ptr<Core> inst(new Core);
+std::shared_ptr<Wyvern::Core> Wyvern::Core::instance() {
+    static std::shared_ptr<Wyvern::Core> inst(new Wyvern::Core);
     return inst;
 }
 
-bool Core::initialize() {
+bool Wyvern::Core::initialize() {
     if (initialized) {
         std::cerr << "[Core] already initialized\n";
         return false;
@@ -89,7 +89,7 @@ bool Core::initialize() {
     }
 }
 
-bool Core::bootstrap(int argc, char** argv) {
+bool Wyvern::Core::bootstrap(int argc, char** argv) {
     if (bootstrapped) {
         std::cerr << "[Core] already bootstrapped\n";
         return false;
@@ -122,14 +122,14 @@ bool Core::bootstrap(int argc, char** argv) {
     return true;
 }
 
-boost::asio::io_context& Core::ioContext() {
+boost::asio::io_context& Wyvern::Core::ioContext() {
     if (!runtimeServices) {
         throw std::runtime_error("Core::ioContext() called before bootstrap()");
     }
     return runtimeServices->ioContext;
 }
 
-void Core::commitConfig() {
+void Wyvern::Core::commitConfig() {
     if (!configStore || configPath.empty()) {
         return;
     }
@@ -140,11 +140,11 @@ void Core::commitConfig() {
     }
 }
 
-bool Core::isInitialized() const {
+bool Wyvern::Core::isInitialized() const {
     return initialized;
 }
 
-void Core::shutdown() {
+void Wyvern::Core::shutdown() {
     if (!initialized) {
         std::cerr << "[Core] not initialized\n";
         return;
@@ -166,21 +166,21 @@ void Core::shutdown() {
     }
 }
 
-std::shared_ptr<EventBus> Core::getEventBus() const {
+std::shared_ptr<EventBus> Wyvern::Core::getEventBus() const {
     if (!initialized) {
         std::cerr << "[Core] Warning: EventBus requested before initialize()\n";
     }
     return eventBus;
 }
 
-std::shared_ptr<ModuleRegistry> Core::getModuleRegistry() const {
+std::shared_ptr<ModuleRegistry> Wyvern::Core::getModuleRegistry() const {
     if (!initialized) {
         std::cerr << "[Core] Warning: ModuleRegistry requested before initialize()\n";
     }
     return moduleRegistry;
 }
 
-bool Core::initializeModules() {
+bool Wyvern::Core::initializeModules() {
     if (!initialized) {
         std::cerr << "[Core] Error: core is not initialized, cannot initialize modules" << std::endl;
         return false;
@@ -206,7 +206,7 @@ bool Core::initializeModules() {
     }
 }
 
-bool Core::readyModules() {
+bool Wyvern::Core::readyModules() {
     if (!initialized) {
         std::cerr << "[Core] Error: core is not initialized, cannot check module readiness" << std::endl;
         return false;
@@ -232,7 +232,7 @@ bool Core::readyModules() {
     }
 }
 
-void Core::shutdownModules() {
+void Wyvern::Core::shutdownModules() {
     if (!initialized || !moduleRegistry) {
         return;
     }
@@ -246,7 +246,7 @@ void Core::shutdownModules() {
     }
 }
 
-std::string Core::getStatus() const {
+std::string Wyvern::Core::getStatus() const {
     std::string status;
     
     status += "=== Core Status ===\n";

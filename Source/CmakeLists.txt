@@ -71,13 +71,11 @@ if(WYVERN_BUILD_P2P_MESSENGER)
   FetchContent_MakeAvailable(pybind11)
 
   add_executable(p2p_messenger
-    Application/main/P2pMessengerMain.cpp
-    Application/main/P2pPlatformModules.cpp
-    Application/modules/p2p/transport/P2pConnectionModule.cpp
+    Application/main/Loader.cpp
+    Application/main/ModuleStaticRegistration.cpp
     Application/modules/p2p/crypto/PythonRuntimeModule.cpp
     Application/modules/p2p/crypto/MeshCryptoModule.cpp
     Application/modules/p2p/db/MeshNodeDbModule.cpp
-    Application/modules/p2p/app/P2pMessengerModule.cpp
     Application/modules/p2p/relay/RelaySignalingModule.cpp
     Application/relay/RelayServer.cpp
     Application/modules/dataStorage/InMemoryRelayStore.cpp
@@ -88,7 +86,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       ${CMAKE_SOURCE_DIR}/Application/main
       ${CMAKE_SOURCE_DIR}/Application/modules
       ${CMAKE_SOURCE_DIR}/Application/modules/p2p
-      ${CMAKE_SOURCE_DIR}/Application/modules/Transport
       ${CMAKE_SOURCE_DIR}/Application/relay
   )
 
@@ -121,73 +118,5 @@ if(WYVERN_BUILD_P2P_MESSENGER)
   set_target_properties(p2p_messenger PROPERTIES
       VS_DEBUGGER_ENVIRONMENT "$<$<CONFIG:Debug>:PYTHONHOME=${CMAKE_SOURCE_DIR}/../EXTERNALS/python>"
   )
-# if(WYVERN_BUILD_P2P_MESSENGER)
-#   # Minimal relay server for NAT traversal (wyvern_relay)
-#   add_executable(wyvern_relay
-#     Application/relay/RelayServer.cpp
-#     Application/modules/dataStorage/InMemoryRelayStore.cpp
-#   )
-
-#   target_include_directories(wyvern_relay
-#     PRIVATE
-#       ${CMAKE_SOURCE_DIR}/Application/main
-#       ${CMAKE_SOURCE_DIR}/Application/modules
-#       ${CMAKE_SOURCE_DIR}/Application/modules/p2p
-#       ${CMAKE_SOURCE_DIR}/Application/relay
-#   )
-
-#   target_link_libraries(wyvern_relay
-#     PRIVATE
-#       WyvernCore
-#       Boost::system
-#       Boost::thread
-#   )
-
-#   if(WIN32)
-#     target_compile_definitions(wyvern_relay PRIVATE
-#       _WIN32_WINNT=0x0A00
-#       WIN32_LEAN_AND_MEAN
-#       NOMINMAX
-#     )
-#     target_link_libraries(wyvern_relay PRIVATE ws2_32 mswsock)
-#   endif()
-  endif()
-
-if(WYVERN_BUILD_P2P_TESTS)
-  find_package(Boost REQUIRED COMPONENTS unit_test_framework system thread)
-
-  add_executable(p2p_tests
-    Tests/p2p/main.cpp
-    Tests/p2p/StunProtocolTests.cpp
-    Tests/p2p/P2pLoopbackTests.cpp
-    Tests/p2p/DataStorageTests.cpp
-    Application/modules/p2p/transport/P2pConnectionModule.cpp
-    Application/modules/dataStorage/InMemoryRelayStore.cpp
-  )
-
-  target_include_directories(p2p_tests
-    PRIVATE
-      ${CMAKE_SOURCE_DIR}/Application/modules
-      ${CMAKE_SOURCE_DIR}/Application/modules/p2p
-      ${CMAKE_SOURCE_DIR}/Application/modules/Transport
-      ${CMAKE_SOURCE_DIR}/Core
-  )
-
-  target_link_libraries(p2p_tests
-    PRIVATE
-      WyvernCore
-      Boost::unit_test_framework
-      Boost::system
-      Boost::thread
-  )
-
-  if(WIN32)
-    target_compile_definitions(p2p_tests PRIVATE
-      _WIN32_WINNT=0x0A00
-      WIN32_LEAN_AND_MEAN
-      NOMINMAX
-      BOOST_TEST_DYN_LINK
-    )
-    target_link_libraries(p2p_tests PRIVATE ws2_32 mswsock)
-  endif()
 endif()
+
