@@ -38,7 +38,7 @@ namespace Wyvern::P2P::Relay {
 /// - onShutdown: closes connection and cleans up
 class RelaySignalingModule : public BaseModule {
 public:
-    static std::string moduleType() { return "p2p.relay.signaling"; }
+    static std::string moduleType() { return "wyvern.signaling-relay"; }
 
     static boost::json::object defaults() {
         boost::json::object obj;

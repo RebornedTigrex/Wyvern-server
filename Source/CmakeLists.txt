@@ -29,57 +29,37 @@ option(WYVERN_BUILD_P2P_TESTS "Build P2P transport unit and loopback tests" ON)
 
 if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
+  find_package(LibDataChannel CONFIG REQUIRED)
 
-  # === Embedded Python: no system Python required ===
-  include(BootstrapPythonSDK)
-  BootstrapPythonSDK()
+  add_executable(oferrr huina.cpp)
+  add_executable(answr answr.cpp)
 
-  include(BootstrapPythonRuntime)
-  BootstrapPythonRuntime()
 
-  # Create IMPORTED target for the embedded Python SDK.
-  if(NOT TARGET Python3::Python)
-    add_library(Python3::Python SHARED IMPORTED)
-    if(WYVERN_SYSTEM_FAMILY_WINDOWS)
-      set_target_properties(Python3::Python PROPERTIES
-        IMPORTED_IMPLIB   "${PYTHON_SDK_ROOT}/libs/python312.lib"
-        IMPORTED_LOCATION "${PYTHON_SDK_ROOT}/python312.dll"
-        INTERFACE_INCLUDE_DIRECTORIES "${PYTHON_SDK_ROOT}/include"
-      )
-    else()
-      set_target_properties(Python3::Python PROPERTIES
-        IMPORTED_LOCATION "${PYTHON_SDK_ROOT}/lib/libpython3.12.so"
-        INTERFACE_INCLUDE_DIRECTORIES "${PYTHON_SDK_ROOT}/include/python3.12"
-      )
-    endif()
-  endif()
 
-  # pybind11 via FetchContent (header-only, no vcpkg Python dependency).
-  # Sources are cached in EXTERNALS (persistent, one download ever).
-  # Subbuild stays inside the build tree (generator-specific, regenerated on fresh).
-  include(FetchContent)
-  set(_pybind11_src_dir "${CMAKE_SOURCE_DIR}/../EXTERNALS/_fetchcontent_cache/pybind11-src")
-  FetchContent_Declare(pybind11
-    URL      https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz
-    URL_HASH SHA256=e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20
-    SOURCE_DIR        "${_pybind11_src_dir}"
-    BINARY_DIR        "${CMAKE_BINARY_DIR}/_deps/pybind11-build"
-    SUBBUILD_DIR      "${CMAKE_BINARY_DIR}/_deps/pybind11-subbuild"
+  target_link_libraries(oferrr 
+    PRIVATE
+      WyvernCore
+      Boost::system
+      Boost::thread
+      LibDataChannel::LibDataChannel
   )
-  set(PYBIND11_FINDPYTHON OFF CACHE BOOL "" FORCE)
-  set(PYBIND11_NOPYTHON   ON  CACHE BOOL "" FORCE)
-  FetchContent_MakeAvailable(pybind11)
+
+  target_link_libraries(answr 
+    PRIVATE
+      WyvernCore
+      Boost::system
+      Boost::thread
+      LibDataChannel::LibDataChannel
+  )
+
 
   add_executable(p2p_messenger
     Application/main/Loader.cpp
     Application/main/ModuleStaticRegistration.cpp
-    Application/modules/p2p/crypto/PythonRuntimeModule.cpp
-    Application/modules/p2p/crypto/MeshCryptoModule.cpp
-    Application/modules/p2p/db/MeshNodeDbModule.cpp
     Application/modules/p2p/relay/RelaySignalingModule.cpp
     Application/relay/RelayServer.cpp
     Application/modules/dataStorage/InMemoryRelayStore.cpp
-  )
+   )
 
   target_include_directories(p2p_messenger
     PRIVATE
@@ -94,9 +74,12 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       WyvernCore
       Boost::system
       Boost::thread
-      Python3::Python
-      pybind11::embed
+      LibDataChannel::LibDataChannel
   )
+
+    set_target_properties(oferrr answr PROPERTIES
+    FOLDER "SOMETHING-OFDWQGESGDSGSADG"
+    )
 
   if(WIN32)
     target_compile_definitions(p2p_messenger PRIVATE
@@ -106,17 +89,5 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     )
     target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
   endif()
-  target_compile_definitions(p2p_messenger PRIVATE
-    # Debug — папка в EXTERNALS (разработка)
-    $<$<CONFIG:Debug>:PYTHON_HOME_PATH="${CMAKE_SOURCE_DIR}/../EXTERNALS/python">
-
-    # # Release — папка рядом с exe (деплой)
-    # $<$<CONFIG:Release>:PYTHON_HOME_PATH="$<TARGET_FILE_DIR:p2p_messenger>/python">
-  )
-
-    # Опционально: для отладки в Visual Studio (только Debug)
-  set_target_properties(p2p_messenger PROPERTIES
-      VS_DEBUGGER_ENVIRONMENT "$<$<CONFIG:Debug>:PYTHONHOME=${CMAKE_SOURCE_DIR}/../EXTERNALS/python>"
-  )
 endif()
 

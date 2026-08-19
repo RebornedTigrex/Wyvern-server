@@ -32,7 +32,7 @@ using WsStream = boost::beast::websocket::stream<boost::asio::ip::tcp::socket>;
 //  - Provide diagnostic status via module command.
 class RelayServer : public BaseModule {
 public:
-    static std::string moduleType() { return "p2p.relay.server"; }
+    static std::string moduleType() { return "wyvern.relay-server"; }
 
     static boost::json::object defaults() {
         boost::json::object obj;
