@@ -1,5 +1,4 @@
-#include "WyvernCore.h"
-#include "ModuleStaticRegistration.h"
+#include "Runtime.h"
 
 #include <csignal>
 #include <cstdlib>
@@ -7,6 +6,7 @@
 
 #ifdef _WIN32
 #include <crtdbg.h>
+#include <windows.h>
 #endif
 
 static void setupAbortHandling() {
@@ -31,30 +31,8 @@ static void setupAbortHandling() {
 
 int main(int argc, char* argv[]) {
     setupAbortHandling();
-    auto core = Wyvern::Core::instance();
 
-    if (!core->bootstrap(argc, argv)) {
-        return EXIT_FAILURE;
-    }
+    PeerWork peerC;
 
-    registerPlatformModules(*core);
-
-    if (!core->initializeModules()) {
-        std::cerr << "[main] module initialization failed\n";
-        core->shutdown();
-        return EXIT_FAILURE;
-    }
-    core->readyModules();
-    core->commitConfig();
-
-    try {
-        core->ioContext().run();
-    } catch (const std::exception& e) {
-        std::cerr << "[main] runtime error: " << e.what() << "\n";
-        core->shutdown();
-        return EXIT_FAILURE;
-    }
-
-    core->shutdown();
     return 0;
 }

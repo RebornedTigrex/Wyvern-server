@@ -29,8 +29,7 @@ int main() {
     pc->onStateChange([](rtc::PeerConnection::State state) {
         std::cout << "[PC State] " << state << std::endl;
         if (state == rtc::PeerConnection::State::Failed) {
-            std::cerr << "!!! FAILED — проверь bindAddress и правильность paste\n";
-        }
+            std::cerr << "!!! FAILED — проверь bindAddress и правильность paste\n";}
         });
 
     pc->onIceStateChange([](rtc::PeerConnection::IceState state) {
