@@ -12,20 +12,8 @@ include(DetectSystemParams)
 DetectSystemParams()
 
 cmake_policy(SET CMP0167 OLD)
-set(WYVERN_RESOLVED_CORE_DIR "${CMAKE_SOURCE_DIR}/Core")
-
-if(NOT WYVERN_RESOLVED_CORE_DIR)
-  message(FATAL_ERROR
-    "Core was not found. Set WYVERN_CORE_DIR to external Core path "
-    "or keep Core as ../Core (preferred) / Core (fallback)."
-  )
-endif()
-
-message(STATUS "Using Core from: ${WYVERN_RESOLVED_CORE_DIR}")
-add_subdirectory("${WYVERN_RESOLVED_CORE_DIR}" "${CMAKE_BINARY_DIR}/_deps/wyvern_core")
 
 option(WYVERN_BUILD_P2P_MESSENGER "Build P2P messenger target" ON)
-option(WYVERN_BUILD_P2P_TESTS "Build P2P transport unit and loopback tests" ON)
 
 if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
@@ -38,7 +26,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 
   target_link_libraries(oferrr 
     PRIVATE
-      WyvernCore
       Boost::system
       Boost::thread
       LibDataChannel::LibDataChannel
@@ -46,7 +33,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 
   target_link_libraries(answr 
     PRIVATE
-      WyvernCore
       Boost::system
       Boost::thread
       LibDataChannel::LibDataChannel
@@ -55,23 +41,16 @@ if(WYVERN_BUILD_P2P_MESSENGER)
 
   add_executable(p2p_messenger
     Application/main/Loader.cpp
-    Application/main/ModuleStaticRegistration.cpp
-    Application/modules/p2p/relay/RelaySignalingModule.cpp
-    Application/relay/RelayServer.cpp
-    Application/modules/dataStorage/InMemoryRelayStore.cpp
+    Application/main/Runtime.cpp
    )
 
   target_include_directories(p2p_messenger
     PRIVATE
       ${CMAKE_SOURCE_DIR}/Application/main
-      ${CMAKE_SOURCE_DIR}/Application/modules
-      ${CMAKE_SOURCE_DIR}/Application/modules/p2p
-      ${CMAKE_SOURCE_DIR}/Application/relay
   )
 
   target_link_libraries(p2p_messenger
     PRIVATE
-      WyvernCore
       Boost::system
       Boost::thread
       LibDataChannel::LibDataChannel
