@@ -10,8 +10,24 @@
 #include <queue>
 #include "boost/json.hpp"
 
-//typedef Server;
-//typedef Node;
+#include<csignal>
+
+void Runtime(int argc, char* argv[]) {
+    auto ioc = std::make_shared<boost::asio::io_context>();
+    auto guard = boost::asio::make_work_guard(*ioc);
+
+    RelayServer server(9005);
+
+    ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT
+}
+
+namespace Utilities {
+    static inline std::string normalize_path(std::string p) {
+        if (!p.empty() && p.front() == '/') p.erase(p.begin());
+        return p;
+    }
+};
+
 
 enum class NodeActivityStatus {
     Online,
@@ -62,7 +78,7 @@ private:
     void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Вынести в cpp, проверить код
         // handshake ещё не закончен
         ws->onOpen([this, ws] {
-            const std::string id = normalize_path(ws->path().value_or(""));
+            const std::string id = Utilities::normalize_path(ws->path().value_or(""));
             if (id.empty()) {
                 ws->close();
                 return;
@@ -119,13 +135,8 @@ private:
         dest->send(std::move(body));
     }
 
-    static inline std::string normalize_path(std::string p) {
-        if (!p.empty() && p.front() == '/') p.erase(p.begin());
-        return p;
-    }
-
     std::mutex mtx_;
-    std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;
+    std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
 
 
 	std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor;
@@ -133,22 +144,79 @@ private:
 	
 };
 
+enum class RelaySpecific {
+    Closest,
+    Fastest
+};
+enum class P2PConnectionType{
+    PreferRelay,
+    PreferDirect
+};
 
-class PeerWork {
+namespace Wyvern {
+    class Configuration {
+    public:
+        RelaySpecific getPreferRelaySpecific();
+        P2PConnectionType getPreferConnectionType();
+    };
+}
+
+
+class NodeConnection {
 	rtc::Configuration config;
+    std::shared_ptr<Wyvern::Configuration> applicationConfig;
+
+    std::shared_ptr<rtc::WebSocket> connection;
 	std::shared_ptr<rtc::PeerConnection> peerConnection;
 	std::shared_ptr<rtc::DataChannel> dc;
 
-	void setupRuntime();
 
-	void startConnectionTo(std::string_view ipAddr);
 
+    static std::string localID;// Я бы засунул это в getSelfID
+
+    std::string getSelfID();
+
+    std::vector<std::string> getRelayNames();//Уточнить цель функции и изменить имя
+    std::string chooseRelayBy(RelaySpecific);
+    std::string chooseNodeType();
+
+    std::vector < std::string> requestKnownNodesFromRelay();
+
+    void setupRuntime(std::shared_ptr<rtc::WebSocket> ws) {
+        ws->onOpen([this, ws] {
+            const std::string id = Utilities::normalize_path(ws->path().value_or(""));
+            if (id.empty()) {
+                ws->close();
+                return;
+            }
+           });
+    }
 	void loop();
 
 public:
-	PeerWork() : peerConnection(std::make_shared<rtc::PeerConnection>(config)) {
-		setupRuntime();
+    NodeConnection() : peerConnection(std::make_shared<rtc::PeerConnection>(config)) {
+		setupRuntime(connection);
 	};
+
+    bool requestConnectToRelay() {//TODO: В private?
+        connection->open("ws://" + chooseRelayBy(applicationConfig->getPreferRelaySpecific()) + "/" + getSelfID());// Прокидывать конфиг сразу без каких-то значений?
+        return connection->isOpen();
+    }
+
+    bool requestConnectionToNode(std::string remoteID) {
+        bool isConnectionSuccess = requestConnectToRelay();
+        //TODO: Далее продумать обмены данными и перейти к установке канала
+
+    }
+    bool requestDirectConnection(std::string remoteID, std::string remoteAddres, std::string port) {
+        connection->open("ws://" + remoteAddres + port + "/" + remoteID);// Прокидывать конфиг сразу без каких-то значений?
+        return connection->isOpen();
+    }
+
+
+    
+    void requestInfoAboutRelay();//Запрос ближайшего известного relay у подключенных пиров. (А надо ли это? Есть ли такая ситуация, когда подключение есть, а реле нет?)
+
 
 };
 

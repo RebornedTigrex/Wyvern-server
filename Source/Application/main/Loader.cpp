@@ -32,7 +32,7 @@ static void setupAbortHandling() {
 int main(int argc, char* argv[]) {
     setupAbortHandling();
 
-    PeerWork peerC;
+    Runtime(argc, argv);
 
     return 0;
 }
