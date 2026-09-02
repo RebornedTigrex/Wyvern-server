@@ -19,26 +19,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
   find_package(Boost REQUIRED COMPONENTS system thread)
   find_package(LibDataChannel CONFIG REQUIRED)
 
-  add_executable(oferrr huina.cpp)
-  add_executable(answr answr.cpp)
-
-
-
-  target_link_libraries(oferrr 
-    PRIVATE
-      Boost::system
-      Boost::thread
-      LibDataChannel::LibDataChannel
-  )
-
-  target_link_libraries(answr 
-    PRIVATE
-      Boost::system
-      Boost::thread
-      LibDataChannel::LibDataChannel
-  )
-
-
   add_executable(p2p_messenger
     Application/main/Loader.cpp
     Application/main/Runtime.cpp
@@ -55,11 +35,6 @@ if(WYVERN_BUILD_P2P_MESSENGER)
       Boost::thread
       LibDataChannel::LibDataChannel
   )
-
-    set_target_properties(oferrr answr PROPERTIES
-    FOLDER "SOMETHING-OFDWQGESGDSGSADG"
-    )
-
   if(WIN32)
     target_compile_definitions(p2p_messenger PRIVATE
       _WIN32_WINNT=0x0A00
