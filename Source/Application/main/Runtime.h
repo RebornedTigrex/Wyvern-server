@@ -12,13 +12,54 @@
 
 #include<csignal>
 
-void Runtime(int argc, char* argv[]) {
-    auto ioc = std::make_shared<boost::asio::io_context>();
-    auto guard = boost::asio::make_work_guard(*ioc);
+namespace Wyvern {
+    class Runtime {
+        std::shared_ptr < boost::asio::io_context > ioc;
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> relayThreadHolder;
+        std::unique_ptr<RelayServer> server;
+        std::unique_ptr<NodeRuntime> nodeRuntime;
 
-    RelayServer server(9005);
+        bool isNeedSetupRelay;
+        bool isNeedSetupNodeRuntime;
 
-    ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT
+    public:
+
+        Runtime(int argc, char* argv[]) : 
+            ioc(std::make_shared<boost::asio::io_context>()), 
+            relayThreadHolder(boost::asio::make_work_guard(*ioc)), 
+            isNeedSetupRelay(false),
+            isNeedSetupNodeRuntime(true)
+        {
+            parse_arguments(argc, argv);
+
+            setupRelay(9005);
+            setupNodeRuntime();
+
+            ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT
+        }
+
+    private:
+
+        void parse_arguments(int argc, char* argv[]) {
+            for (int i = 1; i < argc; ++i) {
+                if (std::string_view(argv[i]) == "--relay") {
+                    isNeedSetupRelay = true;
+                    return;
+                }
+                else if (std::string_view(argv[i]) == "--no-node") {
+                    isNeedSetupNodeRuntime = false;
+                    return;
+                }
+            }
+        }
+
+        inline void setupRelay(uint16_t port) {
+            if (isNeedSetupRelay) server = std::make_unique<RelayServer> (port);
+        }
+        inline void setupNodeRuntime() {
+            if (isNeedSetupNodeRuntime) nodeRuntime = std::make_unique<NodeRuntime>();
+        }
+    };
 }
 
 namespace Utilities {
@@ -137,11 +178,6 @@ private:
 
     std::mutex mtx_;
     std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
-
-
-	std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor;
-	boost::asio::io_context ioc;
-	
 };
 
 enum class RelaySpecific {
@@ -158,73 +194,176 @@ namespace Wyvern {
     public:
         RelaySpecific getPreferRelaySpecific();
         P2PConnectionType getPreferConnectionType();
+        
+        int getRelayConnectiontimeout() { return 5; }; // TODO: заглушка
+    };
+
+    class ConnectionInformationService {//Работает в отдельном потоке и по кд опрашивает всё, что может понадобиться нам (Подключения, доступность, имена)
+    public:
+
+
+        std::vector<std::string> getRelayNames();//TODO:Уточнить цель функции и изменить имя
+        std::string chooseRelayBy(RelaySpecific);
+        std::string chooseNodeType();
+
+        std::vector < std::string> requestKnownNodesFromRelay();
     };
 }
 
 
 class NodeConnection {
-	rtc::Configuration config;
-    std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
-    std::shared_ptr<rtc::WebSocket> connection;
-	std::shared_ptr<rtc::PeerConnection> peerConnection;
+    int relayConnectiontimeout;
+    int reconnectAttemptNum;
+
+	rtc::Configuration config;
+
+	std::shared_ptr<rtc::PeerConnection> pc;
 	std::shared_ptr<rtc::DataChannel> dc;
 
 
 
-    static std::string localID;// Я бы засунул это в getSelfID
 
-    std::string getSelfID();
-
-    std::vector<std::string> getRelayNames();//Уточнить цель функции и изменить имя
-    std::string chooseRelayBy(RelaySpecific);
-    std::string chooseNodeType();
-
-    std::vector < std::string> requestKnownNodesFromRelay();
-
-    void setupRuntime(std::shared_ptr<rtc::WebSocket> ws) {
-        ws->onOpen([this, ws] {
-            const std::string id = Utilities::normalize_path(ws->path().value_or(""));
-            if (id.empty()) {
-                ws->close();
-                return;
-            }
-           });
-    }
 	void loop();
 
 public:
-    NodeConnection() : peerConnection(std::make_shared<rtc::PeerConnection>(config)) {
-		setupRuntime(connection);
-	};
+    NodeConnection() :
+            pc(std::make_shared<rtc::PeerConnection>(config))
+    {};
 
-    bool requestConnectToRelay() {//TODO: В private?
-        connection->open("ws://" + chooseRelayBy(applicationConfig->getPreferRelaySpecific()) + "/" + getSelfID());// Прокидывать конфиг сразу без каких-то значений?
-        return connection->isOpen();
+    inline void connect() {
+        pc->createDataChannel("dataChannelLabel");//TODO: заглушка названия
     }
 
-    bool requestConnectionToNode(std::string remoteID) {
-        bool isConnectionSuccess = requestConnectToRelay();
-        //TODO: Далее продумать обмены данными и перейти к установке канала
+};
 
+class NodeRuntime {//Сюда писать бизнес логику?
+
+    std::shared_ptr<Wyvern::Configuration> applicationConfig;
+    std::shared_ptr<Wyvern::ConnectionInformationService> InformationService;
+
+    std::shared_ptr<boost::asio::io_context> ioc;
+    boost::asio::steady_timer timeoutTimer;
+
+    std::shared_ptr<rtc::WebSocket> connection;
+
+    std::unordered_map<std::string, std::shared_ptr<NodeConnection>> storedNodes;
+
+
+    std::shared_ptr<std::promise<void>> relayUp;
+    std::shared_future<void> relayReady;
+    bool relayOpen = false;
+
+    void setupCallbacks() {
+        connection->onOpen([this] {
+            boost::asio::post(*ioc, [this] {
+                relayOpen = true;
+                timeoutTimer.cancel();
+                if (relayUp) relayUp->set_value();
+                });
+            });
+        connection->onError([this](std::string) {
+            boost::asio::post(*ioc, [this] { failOrRetry(); });
+            });
+        connection->onClosed([this] {
+            boost::asio::post(*ioc, [this] {
+                relayOpen = false;
+                failOrRetry();
+                });
+            });
+        connection->onMessage([this](rtc::message_variant msg) {
+            if (!std::holds_alternative<rtc::string>(msg)) return;
+            auto body = std::get<rtc::string>(std::move(msg));
+            boost::asio::post(*ioc, [this, body = std::move(body)] { onSignal(body); });
+            });
     }
+
+    void failOrRetry() {
+        //TODO: Что-то?
+    }
+
+    void onSignal(std::string body) {
+        //TODO: Что-то?
+    }
+
+    std::string getSelfID() {
+        static std::string localID = "SOME-KIND-OF-ID";//TODO: Заглушка
+        return localID;
+    }
+
+    bool isConnectedToRelay;
+
+public:
+    NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext) :
+        connection(std::make_shared<rtc::WebSocket>()),
+        ioc(ioContext),
+        timeoutTimer(*ioc, boost::asio::chrono::seconds(applicationConfig->getRelayConnectiontimeout())), 
+        isConnectedToRelay(false)
+
+    {
+        setupCallbacks();
+    };
+
+    //Делаем реле подключение отдельно
+    std::future<bool> requestConnectToRelay() {//TODO: В private? 
+        std::future<bool> returnFuture = std::async([this]() -> bool
+            {
+                connection->open("ws://" + InformationService->chooseRelayBy(applicationConfig->getPreferRelaySpecific()) + "/" + getSelfID());// Прокидывать конфиг сразу без каких-то значений
+                return true;
+            });
+        //Какая-то магия с std::future - отдаём true
+        return returnFuture;
+    }
+
+    std::function<void()> connectAttemptCallback;//TODO: В private
+    std::function<void()> reconnectFailedCallback;//TODO: В private
+
+
+    void onReconnectAttempt(std::function<void()> callback = NULL) {
+        connectAttemptCallback = std::move(callback);
+    }
+
+    std::future<bool> doConnectAttempt() {
+        if (connectAttemptCallback) connectAttemptCallback();
+        printf("Попытка подключиться...\n");// TODO: заглушка
+        return requestConnectToRelay();
+    }
+
+    void onReconnectFailed(std::function<void()> callback = NULL) {
+        reconnectFailedCallback = std::move(callback);
+    }
+
+
     bool requestDirectConnection(std::string remoteID, std::string remoteAddres, std::string port) {
         connection->open("ws://" + remoteAddres + port + "/" + remoteID);// Прокидывать конфиг сразу без каких-то значений?
         return connection->isOpen();
     }
 
 
-    
     void requestInfoAboutRelay();//Запрос ближайшего известного relay у подключенных пиров. (А надо ли это? Есть ли такая ситуация, когда подключение есть, а реле нет?)
 
 
-};
+    bool requestConnectionToNode(std::string remoteID) {
 
-class SignalingServer {
-	boost::asio::io_context ioc;
-	std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor;
+        std::future<bool> isSucces;
+        //TODO: Сделать какой-то await для функции ниже
+        if (!isConnectedToRelay) {
+            isSucces = doConnectAttempt();// Наверное его надо всё таки сделать на async_await с каким-то повторением. Как это сделать и надо ли?
+        }
+        //TODO: Что-то здесь должно происходить. Какое-то ожидание?
 
-	void start();
-public:
-	SignalingServer() {};
+        static int num = 0;
+        
+        std::string someName = "SOME-ID-" + num++;//TODO: Заглушка
+        auto nodeCon = std::make_shared<NodeConnection>();//Тут начинается простовление колбеков
+
+        if (isSucces.get() == true) {
+            storedNodes.insert(std::make_pair(someName, nodeCon));
+
+            nodeCon->connect();// Тут тоже должен быть какой-то механизм с реконнектом и таймаутом. Как его сделать?
+        }
+        
+        
+
+    }
 };

@@ -32,7 +32,7 @@ static void setupAbortHandling() {
 int main(int argc, char* argv[]) {
     setupAbortHandling();
 
-    Runtime(argc, argv);
+    auto runtimeObj = Wyvern::Runtime(argc, argv);
 
     return 0;
 }
