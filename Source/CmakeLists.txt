@@ -16,7 +16,7 @@ cmake_policy(SET CMP0167 OLD)
 option(WYVERN_BUILD_P2P_MESSENGER "Build P2P messenger target" ON)
 
 if(WYVERN_BUILD_P2P_MESSENGER)
-  find_package(Boost REQUIRED COMPONENTS system thread)
+  find_package(Boost REQUIRED COMPONENTS system thread json)
   find_package(LibDataChannel CONFIG REQUIRED)
 
   add_executable(p2p_messenger
@@ -33,6 +33,7 @@ if(WYVERN_BUILD_P2P_MESSENGER)
     PRIVATE
       Boost::system
       Boost::thread
+      Boost::json
       LibDataChannel::LibDataChannel
   )
   if(WIN32)
