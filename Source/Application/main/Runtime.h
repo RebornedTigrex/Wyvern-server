@@ -194,6 +194,8 @@ enum class P2PConnectionType{
 namespace Wyvern {
     class Configuration {
     public:
+        Configuration() {};
+
         RelaySpecific getPreferRelaySpecific();
         P2PConnectionType getPreferConnectionType();
         
@@ -214,6 +216,114 @@ namespace Wyvern {
     };
 }
 
+class RelayConnection {
+    std::shared_ptr<boost::asio::io_context> ioc;
+    boost::asio::steady_timer timeoutTimer;
+
+    std::shared_ptr<rtc::WebSocket> connection;
+
+    bool isConnectedToRelay = false;
+
+
+    std::shared_ptr<Wyvern::Configuration> applicationConfig;
+    std::shared_ptr <Wyvern::ConnectionInformationService> InformationService;
+
+      
+
+
+    void setupCallbacks() {
+        connection->onOpen([this] {
+            boost::asio::post(*ioc, [this] {
+                isConnectedToRelay = true;
+                timeoutTimer.cancel();
+                });
+
+            });
+        connection->onClosed([this] {
+            boost::asio::post(*ioc, [this] {
+                isConnectedToRelay = false;
+                });
+            });
+        connection->onMessage([this](rtc::message_variant msg) {
+            if (!std::holds_alternative<rtc::string>(msg)) return;
+            auto body = std::get<rtc::string>(std::move(msg));
+            boost::asio::post(*ioc, [this, body = std::move(body)]
+                {
+                    onSignal(body);
+                });
+            });
+    }
+
+    void onSignal(std::string) {//Заглушка
+        return;
+    }
+
+public:
+    RelayConnection(
+        std::shared_ptr<boost::asio::io_context> ioContext,
+        std::shared_ptr<Wyvern::Configuration> config, 
+        std::shared_ptr <Wyvern::ConnectionInformationService> infoService
+    ) 
+        :
+        InformationService(infoService),
+        applicationConfig(config),
+        connection(std::make_shared<rtc::WebSocket>()),
+        ioc(ioContext),
+        timeoutTimer(*ioc, boost::asio::chrono::seconds(applicationConfig->getRelayTimeoutMS())),
+        isConnectedToRelay(false) 
+    {
+        setupCallbacks();
+    }
+
+
+    //Делаем реле подключение отдельно
+    void requestConnectToRelay() {//TODO: В private? 
+        connection->open("ws://" + InformationService->chooseRelayBy(applicationConfig->getPreferRelaySpecific()) + "/" + getSelfID());
+
+        timeoutTimer.expires_after(std::chrono::seconds(
+            applicationConfig->getRelayTimeoutMS()));
+        timeoutTimer.async_wait([this](boost::system::error_code ec) {
+            if (ec || stopping) return;          // cancel
+            if (!connection->isOpen()) {
+                connection->close();
+                scheduleReconnect();
+            }
+            });
+    }
+
+    std::function<void()> connectAttemptCallback;//TODO: В private
+    std::function<void()> reconnectFailedCallback;//TODO: В private
+
+
+    void onReconnectAttempt(std::function<void()> callback = NULL) {
+        connectAttemptCallback = std::move(callback);
+    }
+
+    void doConnectAttempt() {
+        static int attempt = 0;
+
+        if (connectAttemptCallback) connectAttemptCallback();
+        printf("Попытка подключиться...\n");// TODO: заглушка
+
+        auto delay = std::chrono::milliseconds(500 * (1 << std::min(attempt, 5)));//Интересный механизм от нейронки, пока о таком не думал, но пусть будет
+        ++attempt;
+    }
+
+    void onReconnectFailed(std::function<void()> callback = NULL) {
+        reconnectFailedCallback = std::move(callback);
+    }
+
+
+    bool requestDirectConnection(std::string remoteID, std::string remoteAddres, std::string port) {//TODO: А надо ли вообще это?
+        connection->open("ws://" + remoteAddres + port + "/" + remoteID);// Прокидывать конфиг сразу без каких-то значений?
+        return connection->isOpen();
+    }
+
+
+    void requestInfoAboutRelay() {};//Запрос ближайшего известного relay у подключенных пиров. (А надо ли это? Есть ли такая ситуация, когда подключение есть, а реле нет?)
+
+
+};
 
 class NodeConnection {
 
@@ -244,156 +354,49 @@ class NodeRuntime {//Сюда писать бизнес логику?
     std::shared_ptr<Wyvern::ConnectionInformationService> InformationService;
 
     std::shared_ptr<boost::asio::io_context> ioc;
-    boost::asio::steady_timer timeoutTimer;
 
-    std::shared_ptr<rtc::WebSocket> connection;
+    
 
     std::unordered_map<std::string, std::shared_ptr<NodeConnection>> storedNodes;
 
-    bool stopping = false;// Вроде как бестолковая вещь, а вроде как и полезная
 
 
-    std::shared_ptr<std::promise<void>> relayUp;
-    std::shared_future<void> relayReady;
 
-    void setupCallbacks() {
-        connection->onOpen([this] {
-            boost::asio::post(*ioc, [this] {
-                isConnectedToRelay = true;
-                timeoutTimer.cancel();
-                if (relayUp) relayUp->set_value();
-                });
-
-            });
-        connection->onClosed([this] {
-            boost::asio::post(*ioc, [this] {
-                isConnectedToRelay = false;
-                });
-            });
-        //connection->onError([this](std::string) {
-        //    boost::asio::post(*ioc, [this] { failOrRetry(); });
-        //    });
-        //connection->onClosed([this] {
-        //    boost::asio::post(*ioc, [this] {
-        //        relayOpen = false;
-        //        failOrRetry();
-        //        });
-        //    });
-        //connection->onMessage([this](rtc::message_variant msg) {
-        //    if (!std::holds_alternative<rtc::string>(msg)) return;
-        //    auto body = std::get<rtc::string>(std::move(msg));
-        //    boost::asio::post(*ioc, [this, body = std::move(body)] { onSignal(body); });
-        //    });
+    void onSignal(std::string body) {
+        //TODO: Что-то?
     }
-
-    //void failOrRetry() {
-    //    //TODO: Что-то?
-    //}
-
-    //void onSignal(std::string body) {
-    //    //TODO: Что-то?
-    //}
 
     std::string getSelfID() {
         static std::string localID = "SOME-KIND-OF-ID";//TODO: Заглушка
         return localID;
     }
 
-    bool isConnectedToRelay = false;
-
     
 
 public:
     NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext) :
-        connection(std::make_shared<rtc::WebSocket>()),
-        ioc(ioContext),
-        timeoutTimer(*ioc, boost::asio::chrono::seconds(applicationConfig->getRelayTimeoutMS())), 
-        isConnectedToRelay(false)
-
+            ioc(ioContext),
+            InformationService(std::make_shared<Wyvern::ConnectionInformationService>()),
+            applicationConfig(std::make_shared<Wyvern::Configuration>())
     {
-        setupCallbacks();
+        
     };
 
-    void stopConnection() {// Простая штука, чтоб отменить подключение и не ждать таймаут
-        stopping = true;
-        timeoutTimer.cancel();
-    }
-
-    //Делаем реле подключение отдельно
-    void requestConnectToRelay() {//TODO: В private? 
-        connection->open("ws://" + InformationService->chooseRelayBy(applicationConfig->getPreferRelaySpecific()) + "/" + getSelfID());
-
-        timeoutTimer.expires_after(std::chrono::seconds(
-            applicationConfig->getRelayTimeoutMS()));
-        timeoutTimer.async_wait([this](boost::system::error_code ec) {
-            if (ec || stopping) return;          // cancel
-            if (!connection->isOpen()) {
-                connection->close();
-                scheduleReconnect();
-            }
-            });
-    }
-
-    std::function<void()> connectAttemptCallback;//TODO: В private
-    std::function<void()> reconnectFailedCallback;//TODO: В private
-
-
-    void onReconnectAttempt(std::function<void()> callback = NULL) {
-        connectAttemptCallback = std::move(callback);
-    }
-
-    void scheduleReconnect() {
-        static int attempt = 0;
-
-        if (connectAttemptCallback) connectAttemptCallback();
-        printf("Попытка подключиться...\n");// TODO: заглушка
-
-        if (stopping) return;
-        if (reconnectFailedCallback && attempt >= applicationConfig->getMaxReconnectAttempts()) {
-            reconnectFailedCallback();
-            return;
-        }
-        if (connectAttemptCallback) connectAttemptCallback();
-
-        auto delay = std::chrono::milliseconds(500 * (1 << std::min(attempt, 5)));
-        ++attempt;
-        timeoutTimer.expires_after(delay);
-        timeoutTimer.async_wait([this](boost::system::error_code ec) {
-            if (!ec) requestConnectToRelay();
-            });
-    }
-
-    void onReconnectFailed(std::function<void()> callback = NULL) {
-        reconnectFailedCallback = std::move(callback);
-    }
-
-
-    bool requestDirectConnection(std::string remoteID, std::string remoteAddres, std::string port) {//TODO: А надо ли вообще это?
-        connection->open("ws://" + remoteAddres + port + "/" + remoteID);// Прокидывать конфиг сразу без каких-то значений?
-        return connection->isOpen();
-    }
-
-
-    void requestInfoAboutRelay() {};//Запрос ближайшего известного relay у подключенных пиров. (А надо ли это? Есть ли такая ситуация, когда подключение есть, а реле нет?)
-
+    RelayConnection relayConnection(ioc, applicationConfig, InformationService);
+    
 
     bool requestConnectionToNode(std::string remoteID) {
 
-        //TODO: Сделать какой-то await для функции ниже
-        if (!isConnectedToRelay) {
-            requestConnectToRelay();// Наверное его надо всё таки сделать на async_await с каким-то повторением. Как это сделать и надо ли?
-        }
-        //TODO: Что-то здесь должно происходить. Какое-то ожидание?
 
         static int num = 0;
         
         std::string someName = "SOME-ID-" + num++;//TODO: Заглушка
-        auto nodeCon = std::make_shared<NodeConnection>();//Тут начинается проставление колбеков
+        auto nodeCon = std::make_shared<NodeConnection>();
 
         if (true) {
             storedNodes.insert(std::make_pair(someName, nodeCon));
 
-            nodeCon->connect();// Тут тоже должен быть какой-то механизм с реконнектом и таймаутом. Как его сделать?
+            nodeCon->connect();
         }
         
         
