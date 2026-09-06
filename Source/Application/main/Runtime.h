@@ -76,15 +76,22 @@ namespace Wyvern::Utilities {
         static std::random_device rd;
         static std::mt19937 gen(rd());
         static std::uniform_int_distribution<int> digit(0, 9);
-        static std::string s;
 
-        s = "";
+        static std::mutex _mutex;
 
+        
+        std::string result;
+        result.reserve(seqSize);
+
+        {
+            std::lock_guard lock(_mutex);
         for (int i = 0; i < seqSize; i++) {
-            s += char(digit(gen));
+                result += char(digit(gen));
+        }
         }
 
-        return s;
+
+        return result;
     }
 };
 
