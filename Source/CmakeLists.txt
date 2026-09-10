@@ -13,36 +13,32 @@ DetectSystemParams()
 
 cmake_policy(SET CMP0167 OLD)
 
-option(WYVERN_BUILD_P2P_MESSENGER "Build P2P messenger target" ON)
+find_package(Boost REQUIRED COMPONENTS system thread json)
+find_package(LibDataChannel CONFIG REQUIRED)
 
-if(WYVERN_BUILD_P2P_MESSENGER)
-  find_package(Boost REQUIRED COMPONENTS system thread json)
-  find_package(LibDataChannel CONFIG REQUIRED)
+add_executable(p2p_messenger
+Application/main/Loader.cpp
+Application/main/Runtime.cpp
+)
 
-  add_executable(p2p_messenger
-    Application/main/Loader.cpp
-    Application/main/Runtime.cpp
-   )
+target_include_directories(p2p_messenger
+PRIVATE
+    ${CMAKE_SOURCE_DIR}/Application/main
+)
 
-  target_include_directories(p2p_messenger
-    PRIVATE
-      ${CMAKE_SOURCE_DIR}/Application/main
-  )
-
-  target_link_libraries(p2p_messenger
-    PRIVATE
-      Boost::system
-      Boost::thread
-      Boost::json
-      LibDataChannel::LibDataChannel
-  )
-  if(WIN32)
-    target_compile_definitions(p2p_messenger PRIVATE
-      _WIN32_WINNT=0x0A00
-      WIN32_LEAN_AND_MEAN
-      NOMINMAX
-    )
-    target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
-  endif()
+target_link_libraries(p2p_messenger
+PRIVATE
+    Boost::system
+    Boost::thread
+    Boost::json
+    LibDataChannel::LibDataChannel
+)
+if(WIN32)
+target_compile_definitions(p2p_messenger PRIVATE
+    _WIN32_WINNT=0x0A00
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
+)
+target_link_libraries(p2p_messenger PRIVATE ws2_32 mswsock)
 endif()
 
