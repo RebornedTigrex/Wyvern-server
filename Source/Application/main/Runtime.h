@@ -14,57 +14,6 @@
 class RelayServer;
 class NodeRuntime;
 
-namespace Wyvern {
-    class Runtime : public std::enable_shared_from_this<Runtime> {
-        std::shared_ptr < boost::asio::io_context > ioc;
-        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> relayThreadHolder;
-        std::shared_ptr<RelayServer> server;
-        std::shared_ptr<NodeRuntime> nodeRuntime;
-
-        bool isNeedSetupRelay;
-        bool isNeedSetupNodeRuntime;
-
-    public:
-
-        Runtime(int argc, char* argv[]) : 
-            ioc(std::make_shared<boost::asio::io_context>()), 
-            relayThreadHolder(boost::asio::make_work_guard(*ioc)), 
-            isNeedSetupRelay(false),
-            isNeedSetupNodeRuntime(true)
-        {
-
-            parse_arguments(argc, argv);
-
-            setupRelay(9005);
-            setupNodeRuntime(ioc);
-
-            ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT
-        }
-
-    private:
-
-        void parse_arguments(int argc, char* argv[]) {
-            for (int i = 1; i < argc; ++i) {
-                if (std::string_view(argv[i]) == "--relay") {
-                    isNeedSetupRelay = true;
-                    return;
-                }
-                else if (std::string_view(argv[i]) == "--no-node") {
-                    isNeedSetupNodeRuntime = false;
-                    return;
-                }
-            }
-        }
-
-        inline void setupRelay(uint16_t port) {
-
-            if (isNeedSetupRelay) server = std::make_shared<RelayServer> (port);
-        }
-        inline void setupNodeRuntime(auto ioc) {
-            if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc);
-        }
-    };
-}
 
 namespace Wyvern::Utilities {
     static inline std::string normalize_path(std::string p) {
@@ -109,97 +58,6 @@ struct Node {
 };
 
 using Server = rtc::WebSocketServer;
-
-
-class RelayServer {
-
-    std::optional<Server> serverInstance;
-
-	std::unordered_map<std::string ,Node> storedNodes;
-
-	bool storeDelayedMessage(Node, boost::json::object) { return true; };
-	bool changeNodeActivity(Node, NodeActivityStatus) { return true; };
-
-    bool isNodeActive(Node) { return true; };
-
-public:
-	explicit RelayServer(uint16_t port) {
-		rtc::WebSocketServer::Configuration cfg;
-		cfg.port = port;
-		cfg.bindAddress = "0.0.0.0";
-		cfg.enableTls = false;
-		cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
-
-		serverInstance.emplace(std::move(cfg));
-		serverInstance->onClient([this](std::shared_ptr<rtc::WebSocket> ws) {
-			onIncoming(std::move(ws));
-			});
-	}
-
-private:
-    void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Вынести в cpp, проверить код
-        // handshake ещё не закончен
-        ws->onOpen([this, ws] {
-            const std::string id = Wyvern::Utilities::normalize_path(ws->path().value_or(""));
-            if (id.empty()) {
-                ws->close();
-                return;
-            }
-            {
-                std::lock_guard lk{ mtx_ };
-                if (auto it = storedNodes.find(id); it != storedNodes.end())
-                    it->second.connection->close();//FIXME: Дедлок? Если да - вынести в pendingClose
-                storedNodes[id].connection = ws;
-            }
-            });
-
-        ws->onMessage([this, ws](rtc::message_variant msg) {
-            if (!std::holds_alternative<rtc::string>(msg))
-                return; // сигналинг — текст
-            route(ws, std::get<rtc::string>(std::move(msg)));
-            });
-
-        ws->onClosed([this, ws] {//TODO: Вынести это в отдельную логику?
-            std::lock_guard lk{ mtx_ };
-            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {
-                if (it->second.connection == ws) it = storedNodes.erase(it);
-                else ++it;
-            }
-            });
-
-        ws->onError([](std::string e) {
-            // лог
-            });
-    }
-
-    void route(const std::shared_ptr<rtc::WebSocket>& from, std::string body) {
-        boost::json::value j;
-        try {
-            j = boost::json::parse(body);
-        }
-        catch (...) {
-            return;
-        }
-        auto* obj = j.if_object();
-        if (!obj) return;
-
-        auto* to_v = obj->if_contains("to");
-        if (!to_v || !to_v->is_string()) return;
-        const std::string to{ to_v->as_string() };
-
-        std::shared_ptr<rtc::WebSocket> dest;
-        {
-            std::lock_guard lk{ mtx_ };
-            auto it = storedNodes.find(to);
-            if (it == storedNodes.end()) return;
-            dest = it->second.connection;
-        }
-        dest->send(std::move(body));
-    }
-
-    std::mutex mtx_;
-    std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
-};
 
 enum class RelaySpecific {
     Closest,
@@ -326,8 +184,95 @@ private:
     }
 };
 
+class RelayServer {
 
+    std::optional<Server> serverInstance;
 
+    std::unordered_map<std::string, Node> storedNodes;
+
+    bool storeDelayedMessage(Node, boost::json::object) { return true; };
+    bool changeNodeActivity(Node, NodeActivityStatus) { return true; };
+
+    bool isNodeActive(Node) { return true; };
+
+public:
+    explicit RelayServer(uint16_t port) {
+        rtc::WebSocketServer::Configuration cfg;
+        cfg.port = port;
+        cfg.bindAddress = "0.0.0.0";
+        cfg.enableTls = false;
+        cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
+
+        serverInstance.emplace(std::move(cfg));
+        serverInstance->onClient([this](std::shared_ptr<rtc::WebSocket> ws) {
+            onIncoming(std::move(ws));
+            });
+    }
+
+private:
+    void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Вынести в cpp, проверить код
+        // handshake ещё не закончен
+        ws->onOpen([this, ws] {
+            const std::string id = Wyvern::Utilities::normalize_path(ws->path().value_or(""));
+            if (id.empty()) {
+                ws->close();
+                return;
+            }
+            {
+                std::lock_guard lk{ mtx_ };
+                if (auto it = storedNodes.find(id); it != storedNodes.end())
+                    it->second.connection->close();//FIXME: Дедлок? Если да - вынести в pendingClose
+                storedNodes [id].connection = ws;
+            }
+            });
+
+        ws->onMessage([this, ws](rtc::message_variant msg) {
+            if (!std::holds_alternative<rtc::string>(msg))
+                return; // сигналинг — текст
+            route(ws, std::get<rtc::string>(std::move(msg)));
+            });
+
+        ws->onClosed([this, ws] {//TODO: Вынести это в отдельную логику?
+            std::lock_guard lk{ mtx_ };
+            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {
+                if (it->second.connection == ws) it = storedNodes.erase(it);
+                else ++it;
+            }
+            });
+
+        ws->onError([](std::string e) {
+            // лог
+            });
+    }
+
+    void route(const std::shared_ptr<rtc::WebSocket>& from, std::string body) {
+        boost::json::value j;
+        try {
+            j = boost::json::parse(body);
+        }
+        catch (...) {
+            return;
+        }
+        auto* obj = j.if_object();
+        if (!obj) return;
+
+        auto* to_v = obj->if_contains("to");
+        if (!to_v || !to_v->is_string()) return;
+        const std::string to{ to_v->as_string() };
+
+        std::shared_ptr<rtc::WebSocket> dest;
+        {
+            std::lock_guard lk{ mtx_ };
+            auto it = storedNodes.find(to);
+            if (it == storedNodes.end()) return;
+            dest = it->second.connection;
+        }
+        dest->send(std::move(body));
+    }
+
+    std::mutex mtx_;
+    std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
+};
 
 
 class NodeConnection : public std::enable_shared_from_this<NodeConnection> {
@@ -410,6 +355,102 @@ private:
             if (std::holds_alternative<rtc::string>(msg)) {
                 std::cout << "[P2P Msg] " << std::get<rtc::string>(msg) << std::endl;
             }
+            });
+    }
+};
+
+
+
+class NodeRuntime : public std::enable_shared_from_this<NodeRuntime> {
+    std::shared_ptr<boost::asio::io_context> ioc;
+    std::shared_ptr<Wyvern::Configuration> applicationConfig;
+    std::shared_ptr<Wyvern::ConnectionInformationService> InformationService;
+
+    std::unique_ptr<RelayConnection> relayConnection;
+    std::unordered_map<std::string, std::shared_ptr<NodeConnection>> storedNodes;
+
+public:
+    NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext)
+        : ioc(ioContext),
+        InformationService(std::make_shared<Wyvern::ConnectionInformationService>()),
+        applicationConfig(std::make_shared<Wyvern::Configuration>())
+    {
+        relayConnection = std::make_unique<RelayConnection>(ioc, applicationConfig, InformationService);
+        relayConnection->setSignalCallback([this](const std::string& body) {
+            onSignal(body);
+            });
+        relayConnection->requestConnectToRelay();
+    }
+
+    // Инициация подключения к удаленному пиру (Пир A)
+    void connectToPeer(const std::string& remoteID) {
+        auto nodeCon = std::make_shared<NodeConnection>();
+        storedNodes[remoteID] = nodeCon;
+
+        nodeCon->initAsOffer([this, remoteID](const boost::json::object& signalMsg) {   
+            relayConnection->sendSignal(remoteID, signalMsg);
+            });
+    }
+
+private:
+    // Парсинг входящего сигнала от Relay (Signaling Dispatcher)
+    void onSignal(const std::string& body) {
+        boost::system::error_code ec;
+        auto jv = boost::json::parse(body, ec);
+        if (ec || !jv.is_object()) return;
+
+        const auto& obj = jv.as_object();
+        std::string from = obj.at("from").as_string().c_str();
+        std::string type = obj.at("type").as_string().c_str();
+        const auto& payload = obj.at("payload").as_object();
+
+        // 1. Если это Offer, а у нас нет этого пира — создаем Responder (Пир B)
+        if (storedNodes.find(from) == storedNodes.end()) {
+            if (type == "offer") {
+                auto nodeCon = std::make_shared<NodeConnection>();
+                storedNodes[from] = nodeCon;
+
+                nodeCon->initAsAnswer([this, from](const boost::json::object& signalMsg) {
+                    relayConnection->sendSignal(from, signalMsg);
+                    });
+            }
+            else {
+                return; // Пока игнорируем кандидаты/answer от неизвестных инициаторов
+            }
+        }
+
+        auto nodeCon = storedNodes[from];
+
+        // 2. Диспетчеризация по типам
+        if (type == "offer" || type == "answer") {//TODO: Нужна более строгая типизация
+            std::string sdp = payload.at("sdp").as_string().c_str();
+            nodeCon->handleRemoteDescription(type, sdp);
+        }
+        else if (type == "candidate") {
+            std::string cand = payload.at("candidate").as_string().c_str();
+            std::string mid = payload.at("mid").as_string().c_str();
+            nodeCon->handleRemoteCandidate(cand, mid);
+        }
+    }
+};
+
+class RuntimeAPI {
+    std::shared_ptr < boost::asio::io_context > ioc;
+
+    std::shared_ptr<NodeRuntime> runtime;
+public:
+    RuntimeAPI(std::shared_ptr < boost::asio::io_context > ioContext, std::shared_ptr<NodeRuntime> nodeRuntime) : ioc(ioContext), runtime(nodeRuntime) {
+
+    }
+
+    void callShutdown() {
+        ioc->stop();//FIXME: В данный момент я не создал никаких механизмов корректного завершения, по этому ждём обращения к убитым указателям
+        //TODO: Доделать нормальный shutdown
+    }
+
+    void callConnectToPeer(const std::string& remoteID) {//Автоматическое подключение к реле и попытка подключиться к ноде
+        boost::asio::post(*ioc, [this, remoteID] {
+            runtime->connectToPeer(remoteID);
             });
     }
 };
@@ -513,96 +554,59 @@ private:
     }
 };
 
-class RuntimeAPI {
-    std::shared_ptr < boost::asio::io_context > ioc;
+namespace Wyvern {
+    class Runtime : public std::enable_shared_from_this<Runtime> {
+        std::shared_ptr < boost::asio::io_context > ioc;
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type> relayThreadHolder;
+        std::shared_ptr<RelayServer> server;
+        std::shared_ptr<NodeRuntime> nodeRuntime;
 
-    std::shared_ptr<NodeRuntime> runtime;
-public:
-    RuntimeAPI(std::shared_ptr < boost::asio::io_context > ioContext, std::shared_ptr<NodeRuntime> nodeRuntime) : ioc(ioContext), runtime(nodeRuntime) {
+        bool isNeedSetupRelay;
+        bool isNeedSetupNodeRuntime;
 
-    }
+    public:
 
-    void callShutdown() {
-        ioc->stop();//FIXME: В данный момент я не создал никаких механизмов корректного завершения, по этому ждём обращения к убитым указателям
-        //TODO: Доделать нормальный shutdown
-    }
+        Runtime(int argc, char* argv []) :
+            ioc(std::make_shared<boost::asio::io_context>()),
+            relayThreadHolder(boost::asio::make_work_guard(*ioc)),
+            isNeedSetupRelay(false),
+            isNeedSetupNodeRuntime(true)
+        {
 
-    void callConnectToPeer(const std::string& remoteID) {//Автоматическое подключение к реле и попытка подключиться к ноде
-        boost::asio::post(*ioc, [this, remoteID] {
-            runtime->connectToPeer(remoteID);
-            });
-    }
-};
+            parse_arguments(argc, argv);
 
-class NodeRuntime : public std::enable_shared_from_this<NodeRuntime> {
-    std::shared_ptr<boost::asio::io_context> ioc;
-    std::shared_ptr<Wyvern::Configuration> applicationConfig;
-    std::shared_ptr<Wyvern::ConnectionInformationService> InformationService;
+            setupRelay(9005);
+            setupNodeRuntime(ioc);
 
-    std::unique_ptr<RelayConnection> relayConnection;
-    std::unordered_map<std::string, std::shared_ptr<NodeConnection>> storedNodes;
+            auto api = std::make_shared< RuntimeAPI >(ioc, nodeRuntime);
+            auto console = ConsoleIO(api);
 
-public:
-    NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext)
-        : ioc(ioContext),
-        InformationService(std::make_shared<Wyvern::ConnectionInformationService>()),
-        applicationConfig(std::make_shared<Wyvern::Configuration>())
-    {
-        relayConnection = std::make_unique<RelayConnection>(ioc, applicationConfig, InformationService);
-        relayConnection->setSignalCallback([this](const std::string& body) {
-            onSignal(body);
-            });
-        relayConnection->requestConnectToRelay();
-    }
+            
 
-    // Инициация подключения к удаленному пиру (Пир A)
-    void connectToPeer(const std::string& remoteID) {
-        auto nodeCon = std::make_shared<NodeConnection>();
-        storedNodes[remoteID] = nodeCon;
+            ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT
+        }
 
-        nodeCon->initAsOffer([this, remoteID](const boost::json::object& signalMsg) {   
-            relayConnection->sendSignal(remoteID, signalMsg);
-            });
-    }
+    private:
 
-private:
-    // Парсинг входящего сигнала от Relay (Signaling Dispatcher)
-    void onSignal(const std::string& body) {
-        boost::system::error_code ec;
-        auto jv = boost::json::parse(body, ec);
-        if (ec || !jv.is_object()) return;
-
-        const auto& obj = jv.as_object();
-        std::string from = obj.at("from").as_string().c_str();
-        std::string type = obj.at("type").as_string().c_str();
-        const auto& payload = obj.at("payload").as_object();
-
-        // 1. Если это Offer, а у нас нет этого пира — создаем Responder (Пир B)
-        if (storedNodes.find(from) == storedNodes.end()) {
-            if (type == "offer") {
-                auto nodeCon = std::make_shared<NodeConnection>();
-                storedNodes[from] = nodeCon;
-
-                nodeCon->initAsAnswer([this, from](const boost::json::object& signalMsg) {
-                    relayConnection->sendSignal(from, signalMsg);
-                    });
-            }
-            else {
-                return; // Пока игнорируем кандидаты/answer от неизвестных инициаторов
+        void parse_arguments(int argc, char* argv []) {
+            for (int i = 1; i < argc; ++i) {
+                if (std::string_view(argv [i]) == "--relay") {
+                    isNeedSetupRelay = true;
+                    return;
+                }
+                else if (std::string_view(argv [i]) == "--no-node") {
+                    isNeedSetupNodeRuntime = false;
+                    return;
+                }
             }
         }
 
-        auto nodeCon = storedNodes[from];
+        inline void setupRelay(uint16_t port) {
 
-        // 2. Диспетчеризация по типам
-        if (type == "offer" || type == "answer") {//TODO: Нужна более строгая типизация
-            std::string sdp = payload.at("sdp").as_string().c_str();
-            nodeCon->handleRemoteDescription(type, sdp);
+            if (isNeedSetupRelay) server = std::make_shared<RelayServer>(port);
         }
-        else if (type == "candidate") {
-            std::string cand = payload.at("candidate").as_string().c_str();
-            std::string mid = payload.at("mid").as_string().c_str();
-            nodeCon->handleRemoteCandidate(cand, mid);
+        inline void setupNodeRuntime(auto ioc) {
+            if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc);
         }
-    }
-};
+    };
+}
