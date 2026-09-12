@@ -11,8 +11,6 @@
 
 #include <random>
 
-class RelayServer;
-class NodeRuntime;
 
 
 namespace Wyvern::Utilities {
@@ -50,7 +48,7 @@ enum class NodeActivityStatus {
     Offline
 };
 
-struct Node {
+struct RelayNodeInfo {
     NodeActivityStatus status;
 
     std::shared_ptr<rtc::WebSocket> connection;
@@ -100,7 +98,6 @@ namespace Wyvern {
 
 class RelayConnection {
     std::shared_ptr<boost::asio::io_context> ioc;
-    //boost::asio::steady_timer timeoutTimer; // TODO: На будущее для реконекта
 
     std::shared_ptr<rtc::WebSocket> connection;
 
@@ -115,7 +112,6 @@ class RelayConnection {
         connection->onOpen([this] {
             boost::asio::post(*ioc, [this] {
                 isConnectedToRelay = true;
-                //timeoutTimer.cancel();
                 });
 
             });
@@ -188,12 +184,12 @@ class RelayServer {
 
     std::optional<Server> serverInstance;
 
-    std::unordered_map<std::string, Node> storedNodes;
+    std::unordered_map< std::string, std::shared_ptr<RelayNodeInfo>> storedNodes;
 
-    bool storeDelayedMessage(Node, boost::json::object) { return true; };
-    bool changeNodeActivity(Node, NodeActivityStatus) { return true; };
+    bool storeDelayedMessage(RelayNodeInfo, boost::json::object) { return true; };
+    bool changeNodeActivity(RelayNodeInfo, NodeActivityStatus) { return true; };
 
-    bool isNodeActive(Node) { return true; };
+    bool isNodeActive(RelayNodeInfo) { return true; };
 
 public:
     explicit RelayServer(uint16_t port) {
@@ -209,6 +205,13 @@ public:
             });
     }
 
+    void callCheckAndSendPendingMessages(std::weak_ptr<RelayNodeInfo> node) {
+        auto nodePtr = node.lock();
+        if (!nodePtr) return;
+
+        return;
+    }
+
 private:
     void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Вынести в cpp, проверить код
         // handshake ещё не закончен
@@ -218,12 +221,24 @@ private:
                 ws->close();
                 return;
             }
+
+            std::shared_ptr<RelayNodeInfo> node;
+
             {
                 std::lock_guard lk{ mtx_ };
-                if (auto it = storedNodes.find(id); it != storedNodes.end())
-                    it->second.connection->close();//FIXME: Дедлок? Если да - вынести в pendingClose
-                storedNodes [id].connection = ws;
+                auto& nodePtr = storedNodes [id]; // Находит или создаёт std::shared_ptr
+                if (!nodePtr) {
+                    nodePtr = std::make_shared<RelayNodeInfo>();
+                }
+
+                nodePtr->status = NodeActivityStatus::Online;
+                nodePtr->connection = ws;
+                node = nodePtr;
             }
+
+            callCheckAndSendPendingMessages(node);
+            storedNodes [id]->connection = ws;
+                
             });
 
         ws->onMessage([this, ws](rtc::message_variant msg) {
@@ -232,11 +247,13 @@ private:
             route(ws, std::get<rtc::string>(std::move(msg)));
             });
 
-        ws->onClosed([this, ws] {//TODO: Вынести это в отдельную логику?
-            std::lock_guard lk{ mtx_ };
-            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {
-                if (it->second.connection == ws) it = storedNodes.erase(it);
-                else ++it;
+        ws->onClosed([this, ws] {
+            std::lock_guard lk{ mtx_ }; 
+            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: O(n), либо оптимизировать, либо вынести в асинхрон
+                if (it->second->connection == ws) {
+                    it->second->status = NodeActivityStatus::Offline;
+                }
+                ++it;
             }
             });
 
@@ -265,7 +282,7 @@ private:
             std::lock_guard lk{ mtx_ };
             auto it = storedNodes.find(to);
             if (it == storedNodes.end()) return;
-            dest = it->second.connection;
+            dest = it->second->connection;
         }
         dest->send(std::move(body));
     }
