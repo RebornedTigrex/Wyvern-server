@@ -17,10 +17,10 @@ public:
         : ioc(ioContext),
         applicationConfig(std::make_shared<Wyvern::Configuration>())
     {
-        relayConnection->setSignalCallback([this](const std::string& body) {
-            onSignal(body);
-            });
-        relayConnection->requestConnectToRelay();
+        //relayConnection->setSignalCallback([this](const std::string& body) {
+        //    onSignal(body);
+        //    });
+        //relayConnection->requestConnectToRelay();
     }
 
     // Инициация подключения к удаленному пиру (Пир A)

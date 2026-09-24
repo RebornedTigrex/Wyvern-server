@@ -85,4 +85,17 @@ namespace Wyvern::Utilities {
     {
         return selfEndpoint;
     };
+
+    class ThreadSafeCounter{
+        int counter{0};
+        std::mutex mt;
+    public:
+        int newNum(){
+            mt.lock();
+            counter++;
+            mt.unlock();
+            return counter;
+        }
+        
+    };
 };

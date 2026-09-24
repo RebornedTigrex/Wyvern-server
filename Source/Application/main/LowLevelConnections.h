@@ -1,3 +1,5 @@
+#pragma once
+
 #include "rtc/rtc.hpp"
 #include "Boost/asio.hpp"
 
@@ -7,40 +9,78 @@
 #include <deque>
 #include "boost/json.hpp"
 
+#include "SupportUtils.h"
+
+namespace Wyvern::Protocol {
+
+    enum class MsgType {
+        Init,
+        InitAck,
+        Publish,
+        Ack,
+        Nack,
+        Error,
+    };
+
+    struct Envelope {
+        MsgType type;                           // Тип пакета
+        std::uint64_t seq;                      // Порядковый номер пакета
+        std::optional<std::uint64_t> reply_to;  // Ответ на порядковый номер выходящего пакета
+        std::string node_id;                    // 
+        std::string relay_id;
+        std::int64_t timestamp_ms;
+    };
+
+    boost::json::object serialize(Envelope createdMsg) {
+        boost::json::object returnObj{
+            {"type", createdMsg.type},
+            {"seq", createdMsg.seq},
+            {"reply_to", createdMsg.reply_to},
+            {"node_id", createdMsg.node_id},
+            {"relay_id", createdMsg.relay_id},
+            {"timestamp_ms", createdMsg.timestamp_ms}
+        };
+
+        return returnObj;
+    }
+}
+
+class RelaySequence{
+    static Wyvern::Utilities::ThreadSafeCounter sequenceNumber;
+
+public:
+    void initSeq(std::shared_ptr<rtc::WebSocket> connection) {
+        Wyvern::Protocol::Envelope msg{ Wyvern::Protocol::MsgType::Init, sequenceNumber.newNum(), std::nullopt,};
+
+
+        //connection->send();
+    }
+
+
+    
+};
 
 class IRelayConnection {
-    virtual void connect();
 public:
     IRelayConnection() = default;
 
-    virtual void disconnect();
+    virtual void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) = 0; //Присоединиться к конкретному реле и начать диалог
+    virtual void disconnect() = 0;
 
-    virtual std::optional<std::vector<std::string>> getKnownIDs();
+    virtual void sendSignal(std::function<void(std::shared_ptr<rtc::WebSocket>)> signalSequence) = 0;
+    virtual void sendICEseqSignal() = 0;
+
+    virtual std::optional<std::vector<std::string>> getKnownIDs() = 0;
 };
 
 
-class RelayConnection {
+class RelayConnection : IRelayConnection{
     std::shared_ptr<boost::asio::io_context> ioc;
 
     std::shared_ptr<rtc::WebSocket> connection;
-
-    bool isConnectedToRelay = false;
-
-
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
     void setupCallbacks() {
-        connection->onOpen([this] {
-            boost::asio::post(*ioc, [this] {
-                isConnectedToRelay = true;
-                });
-
-            });
-        connection->onClosed([this] {
-            boost::asio::post(*ioc, [this] {
-                isConnectedToRelay = false;
-                });
-            });
         connection->onMessage([this](rtc::message_variant msg) {
             if (!std::holds_alternative<rtc::string>(msg)) return;
             auto body = std::get<rtc::string>(std::move(msg));
@@ -59,36 +99,29 @@ public:
         :
         applicationConfig(config),
         connection(std::make_shared<rtc::WebSocket>()),
-        ioc(ioContext),
-        isConnectedToRelay(false)
+        ioc(ioContext)
     {
         setupCallbacks();
     }
 
 
     //Делаем реле подключение отдельно
-    void requestConnectToRelay() {//TODO: В private?
-        if (!isConnectedToRelay)
-            connection->open("ws://" + Wyvern::Utilities::getRelayBy(applicationConfig->getPreferRelaySpecific())->host + "/" + Wyvern::Utilities::getSelfID());
+    void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) override {//TODO: В private?
+        if (connection->isClosed())
+            connection->open(endpoint->to_ws_url(Wyvern::Utilities::getSelfID()));
     }
 
-
-    void requestInfoAboutRelay() {};//Запрос ближайшего известного relay у подключенных пиров. (А надо ли это? Есть ли такая ситуация, когда подключение есть, а реле нет?)
+    void disconnect() override {
+        if (connection->isOpen())
+            connection->close();
+    }
 
 public:
-    void sendSignal(const std::string& toNodeId, boost::json::object msg) {
+    void sendSignal(boost::json::object msg) {
         if (!connection || !connection->isOpen()) return;
-
-        msg ["from"] = Wyvern::Utilities::getSelfID();
-        msg ["to"] = toNodeId;
 
         std::string serialized = boost::json::serialize(msg);
         connection->send(serialized);
-    }
-
-    // Передаем incoming сообщения наверх в NodeRuntime
-    void setSignalCallback(std::function<void(const std::string&)> cb) {
-        onSignalCb = std::move(cb);
     }
 
 private:
