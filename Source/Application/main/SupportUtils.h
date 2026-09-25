@@ -33,10 +33,12 @@ namespace Wyvern {
 
     class Endpoint {
     public:
-        Endpoint(std::string _host = "", uint16_t _port = 0) {}
+        Endpoint(std::string _host = "", uint16_t _port = 0) 
+            : host(_host), port(_port)
+        {}
 
-        uint16_t port{ 0 };
-        std::string host{ "" };
+        uint16_t port;
+        std::string host;
 
         std::string to_ws_url(const std::string& peerId) const {
             // Формирует RFC-совместимый URL (IPv6 в квадратных скобках)

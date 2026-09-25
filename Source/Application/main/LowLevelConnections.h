@@ -12,43 +12,46 @@
 #include "SupportUtils.h"
 #include "ProtocolSerialize.h"
 
-class IRelayConnection {
+class IConnection {
 public:
-    IRelayConnection() = default;
+    IConnection() = default;
 
     virtual void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) = 0; //Присоединиться к конкретному реле и начать диалог
     virtual void disconnect() = 0;
 
-    virtual void sendSignal() = 0;
-    virtual void sendICEseqSignal() = 0;
-
-    virtual std::optional<std::vector<std::string>> getKnownIDs() = 0;
+    virtual void sendSignal(std::string msg) = 0;
 };
 
 
-class RelayConnection : IRelayConnection{
+class RelayConnection : IConnection{
 
     std::shared_ptr<rtc::WebSocket> connection;
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
 
-    void setupCallbacks() {
-        connection->onMessage([this](rtc::message_variant msg) {
+    void setupCallbacks(std::function<void(std::string)> onMessage_) {
+        connection->onMessage([this, onMessage_](rtc::message_variant msg) {
             if (!std::holds_alternative<rtc::string>(msg)) return;
 
             auto body = std::get<rtc::string>(std::move(msg));
+            try{
+                if (onMessage_)
+                    onMessage_(std::move(body));
+            }
+            catch(const std::exception &e){
+                //TODO: Намутить обработку
+            }
+            
             });
     }
 
 public:
     RelayConnection(
-        std::shared_ptr<boost::asio::io_context> ioContext,
-        std::shared_ptr<Wyvern::Configuration> config
+        std::function<void(std::string)> onMsgCallback
     ):
-        applicationConfig(config),
         connection(std::make_shared<rtc::WebSocket>())
     {
-        setupCallbacks();
+        setupCallbacks(onMsgCallback);
     }
 
 
@@ -68,13 +71,12 @@ public:
     }
 
 public:
-    void sendSignal(Wyvern::Protocol::Message& msg) {
+    void sendSignal(std::string msg) override{
         if (!connection || !connection->isOpen()) {
             throw std::runtime_error("Send signal without connection");
             return;
         }
-
-        connection->send(Wyvern::Protocol::serialize(msg));
+        connection->send(msg);
     }
 };
 
@@ -82,13 +84,9 @@ public:
 
 
 class NodeConnection : public std::enable_shared_from_this<NodeConnection> {
-    rtc::Configuration config;
+    rtc::Configuration config{};
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::DataChannel> dc;
-
-    inline std::string generateName() {
-        return "TEST-NAME-" + Wyvern::Utilities::generateRandNumSeq(4);
-    }
 
 public:
     NodeConnection() : pc(std::make_shared<rtc::PeerConnection>(config)) {}
