@@ -1,213 +1,258 @@
 #pragma once
 
-#include <boost/json.hpp>
 #include <cstdint>
-#include <optional>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <variant>
 #include <vector>
 
-#include <Protocol.h>
+#include "Protocol.h"
 
+namespace Wyvern::Protocol {
 
-namespace Wyvern::Protocol{
-    inline std::string toString(MsgType t) {
-        switch (t) {
-        case MsgType::Init:    return "INIT";
-        case MsgType::InitAck: return "INIT_ACK";
-        case MsgType::Publish: return "PUBLISH";
-        case MsgType::Ack:     return "ACK";
-        case MsgType::Nack:    return "NACK";
-        case MsgType::Error:   return "ERROR";
+    // ──────────────────── Вспомогательные функции ────────────────────
+
+    inline void put(std::vector<std::byte>& buf, const void* src, size_t n) {
+        auto* p = static_cast<const std::byte*>(src);
+        buf.insert(buf.end(), p, p + n);
+    }
+
+    inline const std::byte* get(const std::byte* data, size_t& pos,
+        size_t size, void* dst, size_t n) {
+        if (pos + n > size)
+            throw std::runtime_error("deserialize: buffer overflow");
+        const std::byte* p = data + pos;
+        if (dst) std::memcpy(dst, p, n);
+        pos += n;
+        return p;
+    }
+
+    // ──────────────────── Шаблоны: trivially copyable ────────────────────
+
+    template <typename T>
+        requires std::is_trivially_copyable_v<T>
+    void serialize(std::vector<std::byte>& buf, const T& v) {
+        put(buf, &v, sizeof(T));
+    }
+
+    template <typename T>
+        requires std::is_trivially_copyable_v<T>
+    void deserialize(const std::byte* data, size_t& pos, size_t size, T& v) {
+        get(data, pos, size, &v, sizeof(T));
+    }
+
+    // ──────────────────── Шаблоны: std::string ────────────────────
+
+    inline void serialize(std::vector<std::byte>& buf, const std::string& s) {
+        uint32_t len = static_cast<uint32_t>(s.size());
+        serialize(buf, len);
+        if (len) put(buf, s.data(), len);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, std::string& s) {
+        uint32_t len = 0;
+        deserialize(data, pos, size, len);
+        if (len) {
+            const auto* p = get(data, pos, size, nullptr, len);
+            s.assign(reinterpret_cast<const char*>(p), len);
         }
-        return "UNKNOWN";
-    }
-
-    inline MsgType msgTypeFromString(std::string_view s) {
-        if (s == "INIT")      return MsgType::Init;
-        if (s == "INIT_ACK")  return MsgType::InitAck;
-        if (s == "PUBLISH")   return MsgType::Publish;
-        if (s == "ACK")       return MsgType::Ack;
-        if (s == "NACK")      return MsgType::Nack;
-        if (s == "ERROR")     return MsgType::Error;
-        throw std::runtime_error("unknown msg type: " + std::string(s));
-    }
-
-    inline boost::json::object toJson(const Envelope& e) {
-        boost::json::object o{
-            {"type",      toString(e.type)},
-            {"seq",       e.seq},
-            {"node_id",   e.node_id},
-            {"relay_id",  e.relay_id},
-            {"timestamp", e.timestamp_ms},
-        };
-        if (e.reply_to) o ["reply_to"] = *e.reply_to;
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::RelayInfo& r) {
-        boost::json::object o{
-            {"id",   r.id},
-            {"addr", r.addr},
-            {"load", r.load},
-        };
-
-        if (r.source) o ["source"] = *r.source;
-
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::InitMsg& m) {
-        auto o = toJson(m.env);
-        boost::json::object p{ {"action", m.payload.action} };
-        if (m.payload.since_ms) p ["since"] = *m.payload.since_ms;
-        o ["payload"] = std::move(p);
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::InitAckMsg& m) {
-        auto o = toJson(m.env);
-        boost::json::array relays;
-        for (const auto& r : m.payload.relays) relays.push_back(toJson(r));
-        boost::json::object p{
-            {"status", m.payload.status},
-            {"relays", std::move(relays)},
-        };
-        if (m.payload.expected_size) p ["expected_size"] = *m.payload.expected_size;
-        
-        o ["payload"] = std::move(p);
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::PublishMsg& m) {
-        auto o = toJson(m.env);
-        boost::json::array relays;
-        for (const auto& r : m.payload.relays) relays.push_back(toJson(r));
-        o ["payload"] = boost::json::object{
-            {"relays", std::move(relays)},
-        };
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::AckMsg& m) {
-        auto o = toJson(m.env);
-        boost::json::object p;
-        if (m.payload.stored) o ["stored"] = *m.payload.stored;
-        if (m.payload.duplicates) o ["duplicates"] = *m.payload.duplicates;
-
-        o ["payload"] = std::move(p);
-
-        return o;
-    }
-
-    inline boost::json::object toJson(const Packets::NackMsg& m) {
-        auto o = toJson(m.env);
-        
-
-        o ["payload"] = boost::json::object{
-            {"code", m.payload.code},
-            {"reason", m.payload.reason},
-        };
-
-        return o;
-    }
-
-    inline std::string serialize(const Message& msg) {
-        boost::json::object obj = std::visit([](const auto& m) { return toJson(m); }, msg);
-        return boost::json::serialize(obj);
-    }
-
-    // ---------- Десериализация ----------
-
-    inline Envelope parse_envelope(const boost::json::object& o) {
-        Envelope e;
-        e.type = msgTypeFromString(o.at("type").as_string());
-        e.seq = o.at("seq").as_uint64();
-        e.node_id = std::string(o.at("node_id").as_string());
-        e.relay_id = std::string(o.at("relay_id").as_string());
-        e.timestamp_ms = o.at("timestamp").as_int64();
-        if (auto it = o.find("reply_to"); it != o.end())
-            e.reply_to = it->value().as_uint64();
-        return e;
-    }
-
-    inline Packets::RelayInfo parse_relay(const boost::json::value& v) {
-        const auto& o = v.as_object();
-        return Packets::RelayInfo{
-            std::string(o.at("id").as_string()),
-            std::string(o.at("addr").as_string()),
-            std::string(),
-            o.contains("load") ? o.at("load").as_double() : 0.0,
-        };
-    }
-
-    inline Message parse(std::string_view text) {
-        boost::json::value v = boost::json::parse(text);
-        const auto& o = v.as_object();
-
-        Envelope env = parse_envelope(o);
-        const auto& p = o.at("payload").as_object();
-
-        switch (env.type) {
-        case MsgType::Init: {
-            Packets::InitPayload pl;
-            pl.action = std::string(p.at("action").as_string());
-
-            if (auto it = p.find("since"); it != p.end() && !it->value().is_null())
-                pl.since_ms = it->value().as_int64();
-
-            return Packets::InitMsg{ std::move(env), std::move(pl) };
+        else {
+            s.clear();
         }
-
-        case MsgType::InitAck: {
-            Packets::InitAckPayload pl;
-            pl.status = std::string(p.at("status").as_string());
-
-            if (auto it = p.find("expected_size"); it != p.end() && !it->value().is_null())
-                pl.expected_size = static_cast<std::uint32_t>(it->value().as_int64());
-
-            if (auto it = p.find("relays"); it != p.end() && !it->value().is_null()) {
-                for (const auto& r : it->value().as_array())
-                    pl.relays.push_back(parse_relay(r));
-            }
-
-            return Packets::InitAckMsg{ std::move(env), std::move(pl) };
-        }
-
-        case MsgType::Publish: {
-            Packets::PublishPayload pl;
-
-            if (auto it = p.find("relays"); it != p.end() && !it->value().is_null()) {
-                for (const auto& r : it->value().as_array())
-                    pl.relays.push_back(parse_relay(r));
-            }
-
-            return Packets::PublishMsg{ std::move(env), std::move(pl) };
-        }
-
-        case MsgType::Ack: {
-            Packets::AckPayload pl;
-
-            if (auto it = p.find("stored"); it != p.end() && !it->value().is_null())
-                pl.stored = static_cast<std::uint32_t>(it->value().as_int64());
-
-            if (auto it = p.find("duplicates"); it != p.end() && !it->value().is_null())
-                pl.duplicates = static_cast<std::uint32_t>(it->value().as_int64());
-
-            return Packets::AckMsg{ std::move(env), std::move(pl) };
-        }
-
-        case MsgType::Nack:
-        case MsgType::Error: {
-            Packets::NackPayload pl;
-            pl.code = std::string(p.at("code").as_string());
-            pl.reason = std::string(p.at("reason").as_string());
-
-            return Packets::NackMsg{ std::move(env), std::move(pl) };
-        }
-        }
-
-        throw std::runtime_error("unknown message type: " + toString(env.type));
     }
-}
+
+    // ──────────────────── ПРЕДВАРИТЕЛЬНЫЕ ОБЪЯВЛЕНИЯ СВОИХ ТИПОВ ────────────────────
+    // MSVC требует видеть перегрузки ДО шаблона вектора
+
+    // --- MsgType ---
+
+    inline void serialize(std::vector<std::byte>& buf, MsgType v) {
+        serialize(buf, static_cast<uint8_t>(v));
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, MsgType& v) {
+        uint8_t raw = 0;
+        deserialize(data, pos, size, raw);
+        v = static_cast<MsgType>(raw);
+    }
+
+    // --- RelayInfo ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::RelayInfo& v) {
+        serialize(buf, v.id);
+        serialize(buf, v.addr);
+        serialize(buf, v.source);
+        serialize(buf, v.load);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::RelayInfo& v) {
+        deserialize(data, pos, size, v.id);
+        deserialize(data, pos, size, v.addr);
+        deserialize(data, pos, size, v.source);
+        deserialize(data, pos, size, v.load);
+    }
+
+    // ──────────────────── Шаблоны: std::vector ────────────────────
+    // Теперь компилятор уже видел перегрузку RelayInfo выше
+
+    template <typename T>
+    void serialize(std::vector<std::byte>& buf, const std::vector<T>& v) {
+        uint32_t n = static_cast<uint32_t>(v.size());
+        serialize(buf, n);
+        for (const auto& item : v)
+            serialize(buf, item);
+    }
+
+    template <typename T>
+    void deserialize(const std::byte* data, size_t& pos,
+        size_t size, std::vector<T>& v) {
+        uint32_t n = 0;
+        deserialize(data, pos, size, n);
+        v.resize(n);
+        for (auto& item : v)
+            deserialize(data, pos, size, item);
+    }
+
+    // ──────────────────── Оставшиеся перегрузки ────────────────────
+
+    // --- Envelope ---
+
+    inline void serialize(std::vector<std::byte>& buf, const Envelope& e) {
+        serialize(buf, e.type);
+        serialize(buf, e.seq);
+        serialize(buf, e.reply_to);
+        serialize(buf, e.node_id);
+        serialize(buf, e.relay_id);
+        serialize(buf, e.timestamp_ms);
+        serialize(buf, e.payload_size);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Envelope& e) {
+        deserialize(data, pos, size, e.type);
+        deserialize(data, pos, size, e.seq);
+        deserialize(data, pos, size, e.reply_to);
+        deserialize(data, pos, size, e.node_id);
+        deserialize(data, pos, size, e.relay_id);
+        deserialize(data, pos, size, e.timestamp_ms);
+        deserialize(data, pos, size, e.payload_size);
+    }
+
+    // --- InitPayload ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::InitPayload& v) {
+        serialize(buf, v.action);
+        serialize(buf, v.since_ms);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::InitPayload& v) {
+        deserialize(data, pos, size, v.action);
+        deserialize(data, pos, size, v.since_ms);
+    }
+
+    // --- InitAckPayload ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::InitAckPayload& v) {
+        serialize(buf, v.status);
+        serialize(buf, v.relays_payload_size);
+        serialize(buf, v.relays);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::InitAckPayload& v) {
+        deserialize(data, pos, size, v.status);
+        deserialize(data, pos, size, v.relays_payload_size);
+        deserialize(data, pos, size, v.relays);
+    }
+
+    // --- PublishPayload ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::PublishPayload& v) {
+        serialize(buf, v.relays_payload_size);
+        serialize(buf, v.relays);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::PublishPayload& v) {
+        deserialize(data, pos, size, v.relays_payload_size);
+        deserialize(data, pos, size, v.relays);
+    }
+
+    // --- AckPayload ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::AckPayload& v) {
+        serialize(buf, v.stored);
+        serialize(buf, v.duplicates);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::AckPayload& v) {
+        deserialize(data, pos, size, v.stored);
+        deserialize(data, pos, size, v.duplicates);
+    }
+
+    // --- NackPayload ---
+
+    inline void serialize(std::vector<std::byte>& buf,
+        const Packets::NackPayload& v) {
+        serialize(buf, v.code);
+        serialize(buf, v.reason);
+    }
+
+    inline void deserialize(const std::byte* data, size_t& pos,
+        size_t size, Packets::NackPayload& v) {
+        deserialize(data, pos, size, v.code);
+        deserialize(data, pos, size, v.reason);
+    }
+
+    // --- Обёртки сообщений ---
+
+    inline void serialize(std::vector<std::byte>& buf, const Packets::InitMsg& m) { serialize(buf, m.env); serialize(buf, m.payload); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::InitAckMsg& m) { serialize(buf, m.env); serialize(buf, m.payload); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::PublishMsg& m) { serialize(buf, m.env); serialize(buf, m.payload); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::AckMsg& m) { serialize(buf, m.env); serialize(buf, m.payload); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::NackMsg& m) { serialize(buf, m.env); serialize(buf, m.payload); }
+
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::InitMsg& m) { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::InitAckMsg& m) { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::PublishMsg& m) { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::AckMsg& m) { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::NackMsg& m) { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+
+    // ──────────────────── Message (std::variant) ────────────────────
+
+    inline std::vector<std::byte> serialize(const Message& msg) {
+        std::vector<std::byte> buf;
+        serialize(buf, static_cast<uint8_t>(msg.index()));
+        std::visit([&](const auto& m) { serialize(buf, m); }, msg);
+        return buf;
+    }
+
+    inline Message deserialize(const std::vector<std::byte>& buf) {
+        const std::byte* data = buf.data();
+        size_t pos = 0, size = buf.size();
+        uint8_t idx = 0;
+        deserialize(data, pos, size, idx);
+
+        switch (idx) {
+        case 0: { Packets::InitMsg    m; deserialize(data, pos, size, m); return m; }
+        case 1: { Packets::InitAckMsg m; deserialize(data, pos, size, m); return m; }
+        case 2: { Packets::PublishMsg m; deserialize(data, pos, size, m); return m; }
+        case 3: { Packets::AckMsg     m; deserialize(data, pos, size, m); return m; }
+        case 4: { Packets::NackMsg    m; deserialize(data, pos, size, m); return m; }
+        default:
+            throw std::runtime_error("deserialize: unknown message type");
+        }
+    }
+
+} // namespace Wyvern::Protocol

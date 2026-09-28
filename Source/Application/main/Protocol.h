@@ -1,5 +1,4 @@
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -18,10 +17,11 @@ namespace Wyvern::Protocol {
     struct Envelope {
         MsgType type;                               // Тип пакета
         std::uint64_t seq;                          // Порядковый номер пакета
-        std::optional<std::uint64_t> reply_to;     // Ответ на порядковый номер выходящего пакета
+        std::uint64_t reply_to{UINT64_MAX};     // Ответ на порядковый номер выходящего пакета // Нет значение = UINT64_MAX
         std::string node_id;
         std::string relay_id;
         std::int64_t timestamp_ms;
+        uint32_t payload_size {UINT32_MAX}; // Нет значение = UINT32_MAX
     };
 
 
@@ -30,32 +30,33 @@ namespace Wyvern::Protocol {
         struct RelayInfo { // Пакет нужный для обмена информацией о реле с нодами
             std::string id;
             std::string addr;
-            std::optional<std::string> source; // "gossip", "config", ...
+            std::string source{""}; // "gossip", "config", ... иначе = "". Отсутствие допустимо
             double load = 0.0;
         };
 
         // INIT: запрос списка реле
         struct InitPayload {
-            std::string action;                      // "GET_RELAY_LIST"
-            std::optional<std::int64_t> since_ms;               // получить изменения с момента
+            std::string action;                       // "GET_RELAY_LIST"
+            std::int64_t since_ms{INT64_MAX};         // получить изменения с момента \\ Отсутствие значения = INT64_MAX
         };
 
         // INIT_ACK: подтверждение + опционально список
         struct InitAckPayload {
             std::string status;                       // "accepted" | "ok"
-            std::optional<uint32_t> expected_size;
+            uint32_t relays_payload_size;             // Отсутствие значения = UINT32_MAX
             std::vector<RelayInfo> relays;            // если список небольшой
         };
 
         // PUBLISH: узел публикует свои реле
         struct PublishPayload {
+            uint32_t relays_payload_size;
             std::vector<RelayInfo> relays;
         };
 
         // ACK: успешное подтверждение
         struct AckPayload {
-            std::optional<uint32_t> stored;
-            std::optional<uint32_t> duplicates;
+            uint32_t stored{UINT32_MAX};            // Отсутствие значения = UINT32_MAX
+            uint32_t duplicates{UINT32_MAX};        // Отсутствие значения = UINT32_MAX
         };
 
         // NACK / ERROR
