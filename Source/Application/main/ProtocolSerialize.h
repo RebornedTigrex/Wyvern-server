@@ -35,7 +35,7 @@ namespace Wyvern::Protocol {
         std::int64_t now_ms,
         decltype(ReplyMsg::payload) payload)
     {
-        ReplyMsg out;
+        ReplyMsg out{};
         out.env = make_reply_envelope(question, type, seq,
             std::move(from), now_ms);
         out.payload = std::move(payload);

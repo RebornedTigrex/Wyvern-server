@@ -10,6 +10,7 @@
 #include "boost/json.hpp"
 
 #include "SupportUtils.h"
+#include "ProtocolSerialize.h"
 
 
 using Server = rtc::WebSocketServer;
@@ -38,10 +39,10 @@ class RelayServer {
     bool isNodeActive(RelayNodeInfo) { return true; };
 
 public:
-    explicit RelayServer(uint16_t port) {
+    explicit RelayServer(std::shared_ptr<Wyvern::Endpoint> endpoint) {
         rtc::WebSocketServer::Configuration cfg;
-        cfg.port = port;
-        cfg.bindAddress = "0.0.0.0";
+        cfg.port = endpoint->port;
+        cfg.bindAddress = endpoint->host;
         cfg.enableTls = false;
         cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
 
@@ -88,14 +89,14 @@ private:
             });
 
         ws->onMessage([this, ws](rtc::message_variant msg) {
-            if (!std::holds_alternative<rtc::string>(msg))
+            if (!std::holds_alternative<rtc::binary>(msg))
                 return; // сигналинг — текст
-            route(ws, std::get<rtc::string>(std::move(msg)));
+            route(ws, std::get<rtc::binary>(std::move(msg)));
             });
 
         ws->onClosed([this, ws] {
             std::lock_guard lk{ mtx_ };
-            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: O(n), либо оптимизировать, либо вынести в асинхрон
+            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: O(n), либо оптимизировать, либо вынести в асинхрон. В целом, если использовать ws как ключ - сложность будет O(1)
                 if (it->second->connection == ws) {
                     it->second->status = NodeActivityStatus::Offline;
                 }
@@ -108,31 +109,57 @@ private:
             });
     }
 
-    void route(const std::shared_ptr<rtc::WebSocket>& from, std::string body) {
-        boost::json::value j;
-        try {
-            j = boost::json::parse(body);
-        }
-        catch (...) {
-            return;
-        }
-        auto* obj = j.if_object();
-        if (!obj) return;
-
-        auto* to_v = obj->if_contains("to");
-        if (!to_v || !to_v->is_string()) return;
-        const std::string to{ to_v->as_string() };
-
-        std::shared_ptr<rtc::WebSocket> dest;
-        {
-            std::lock_guard lk{ mtx_ };
-            auto it = storedNodes.find(to);
-            if (it == storedNodes.end()) return;
-            dest = it->second->connection;
-        }
-        dest->send(std::move(body));
+    void route(const std::shared_ptr<rtc::WebSocket>& from, std::vector<std::byte> body) {
+        Wyvern::Protocol::Message msg = Wyvern::Protocol::deserialize(body);
+        std::visit([&](const auto& m) { handle(from, m); }, msg);
     }
 
+private:
+    void handle(const std::shared_ptr<rtc::WebSocket>& from,
+        const Wyvern::Protocol::Packets::InitMsg& req)
+    {
+        using namespace Wyvern::Protocol;
+
+        std::string status;
+
+        switch (req.payload.action) {
+        case ActionType::NoAction: { status = "ok"; break; }
+        case ActionType::GetRelayList: { status = "Not implemented"; break; }
+        }
+            
+
+        Packets::InitAckPayload payload{
+            .status = status,
+            .relays_payload_size = UINT32_MAX,
+            .relays = {},
+        };
+        
+        auto ack = make_reply<Packets::InitAckMsg>(
+            req.env,
+            Packets::InitAckMsg::kType,
+            static_cast<std::uint64_t>(outSeq_.newNum()),
+            Wyvern::Utilities::getSelfID(),
+            Wyvern::Utilities::NowMs(),
+            std::move(payload));
+
+        from->send(serialize(Message{ std::move(ack) }));
+    }
+
+    void handle(const std::shared_ptr<rtc::WebSocket>& from,
+        const Wyvern::Protocol::Packets::InitAckMsg& req){return;}
+
+    void handle(const std::shared_ptr<rtc::WebSocket>& from,
+        const Wyvern::Protocol::Packets::PublishMsg& req)
+    {
+        return;
+    }
+
+    void handle(const std::shared_ptr<rtc::WebSocket>& from,
+        const Wyvern::Protocol::Packets::AckMsg& req){ return; }
+    void handle(const std::shared_ptr<rtc::WebSocket>& from,
+        const Wyvern::Protocol::Packets::NackMsg& req){ return; }
+    
+    Wyvern::Utilities::ThreadSafeCounter outSeq_;
     std::mutex mtx_;
     std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
 };

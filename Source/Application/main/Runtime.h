@@ -211,7 +211,7 @@ namespace Wyvern {
 
             parse_arguments(argc, argv);
 
-            setupRelay(9005);
+            setupRelay(selfEndpoint);
             setupNodeRuntime(ioc);
 
             auto api = std::make_shared< RuntimeAPI >(ioc, nodeRuntime);
@@ -237,9 +237,9 @@ namespace Wyvern {
             }
         }
 
-        inline void setupRelay(uint16_t port) {
+        inline void setupRelay(std::shared_ptr<Endpoint> relayEndpoint) {
 
-            if (isNeedSetupRelay) server = std::make_shared<RelayServer>(port);
+            if (isNeedSetupRelay) server = std::make_shared<RelayServer>(relayEndpoint);
         }
         inline void setupNodeRuntime(auto ioc) {
             if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc);
