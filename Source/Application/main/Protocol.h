@@ -6,20 +6,25 @@
 namespace Wyvern::Protocol {
 
     enum class MsgType {
-        Init,
-        InitAck,
-        Publish,
-        Ack,
-        Nack,
-        Error,
+        Init = 0,
+        InitAck = 1,
+        Publish = 2,
+        Ack = 3,
+        Nack = 4,
+        Error = 5,
+    };
+
+    enum class ActionType {
+        NoAction = 0,
+        GetRelayList = 1,
     };
 
     struct Envelope {
-        MsgType type;                               // Тип пакета
+        MsgType type;
         std::uint64_t seq;                          // Порядковый номер пакета
         std::uint64_t reply_to{UINT64_MAX};     // Ответ на порядковый номер выходящего пакета // Нет значение = UINT64_MAX
-        std::string node_id;
-        std::string relay_id;
+        std::string from;
+        std::string to;
         std::int64_t timestamp_ms;
         uint32_t payload_size {UINT32_MAX}; // Нет значение = UINT32_MAX
     };
@@ -36,7 +41,7 @@ namespace Wyvern::Protocol {
 
         // INIT: запрос списка реле
         struct InitPayload {
-            std::string action;                       // "GET_RELAY_LIST"
+            ActionType action;                       // "GET_RELAY_LIST"
             std::int64_t since_ms{INT64_MAX};         // получить изменения с момента \\ Отсутствие значения = INT64_MAX
         };
 
@@ -65,11 +70,11 @@ namespace Wyvern::Protocol {
             std::string reason;
         };
 
-        struct InitMsg      { Envelope env; InitPayload     payload; };
-        struct InitAckMsg   { Envelope env; InitAckPayload  payload; };
-        struct PublishMsg   { Envelope env; PublishPayload  payload; };
-        struct AckMsg       { Envelope env; AckPayload      payload; };
-        struct NackMsg      { Envelope env; NackPayload     payload; };
+        struct InitMsg      { static constexpr MsgType kType = MsgType::Init;     Envelope env; InitPayload     payload; };
+        struct InitAckMsg   { static constexpr MsgType kType = MsgType::InitAck;  Envelope env; InitAckPayload  payload; };
+        struct PublishMsg   { static constexpr MsgType kType = MsgType::Publish;  Envelope env; PublishPayload  payload; };
+        struct AckMsg       { static constexpr MsgType kType = MsgType::Ack;      Envelope env; AckPayload      payload; };
+        struct NackMsg      { static constexpr MsgType kType = MsgType::Nack;     Envelope env; NackPayload     payload; };
     }
     using Message = std::variant<Packets::InitMsg, Packets::InitAckMsg, Packets::PublishMsg, Packets::AckMsg, Packets::NackMsg>;
 

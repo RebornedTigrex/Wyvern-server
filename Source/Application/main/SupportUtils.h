@@ -3,8 +3,6 @@
 #include <random>
 #include <memory>
 
-using NodeID = std::string;
-
 enum class RelaySpecific {
     Closest,
     Fastest
@@ -78,8 +76,8 @@ namespace Wyvern::Utilities {
         return result;
     }
 
-    static inline NodeID getSelfID() {
-        static NodeID localID = "SOME-KIND-OF-ID-" + Wyvern::Utilities::generateRandNumSeq(4);//TODO: Заглушка
+    static inline std::string getSelfID() {
+        static std::string localID = "SOME-KIND-OF-ID-" + Wyvern::Utilities::generateRandNumSeq(4);//TODO: Заглушка
         return localID;
     }
 
