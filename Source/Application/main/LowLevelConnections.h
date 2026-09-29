@@ -10,20 +10,29 @@
 #include "boost/json.hpp"
 
 #include "SupportUtils.h"
-#include "ProtocolSerialize.h"
 
-class IConnection {
+class ISignalingConnection {
 public:
-    IConnection() = default;
+    ISignalingConnection() = default;
 
-    virtual void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) = 0; //Присоединиться к конкретному реле и начать диалог
+    virtual void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) = 0; //Присоединиться к конкретному реле
     virtual void disconnect() = 0;
 
     virtual void sendSignal(std::string msg) = 0;
 };
 
+class IChannelConnection {//FIXME: Тут есть проблема. Как я могу разделить канал и реле, если один зависит от другого?
+public:
+    IChannelConnection() = default;
 
-class RelayConnection : IConnection{
+    virtual void connect(std::string PeerIdentification) = 0; // Присоединиться к конкретному пиру, после подключение к реле
+    virtual void disconnect() = 0;
+
+    virtual void send(std::string msg) = 0;
+};
+
+
+class RelayConnection : public ISignalingConnection, public std::enable_shared_from_this<RelayConnection> {
 
     std::shared_ptr<rtc::WebSocket> connection;
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
@@ -56,24 +65,24 @@ public:
 
 
     //Делаем реле подключение отдельно
-    void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) override {//TODO: В private?
+    void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) override {
         if (connection->isClosed())
             connection->open(endpoint->to_ws_url(Wyvern::Utilities::getSelfID()));
         else
-            throw std::runtime_error("Attempt to connect with open connection");
+            throw std::runtime_error("Attempt to connect with open connection");//FIXME: Более явные ошибки? Исправить позже трудности с асинхронными throw
     }
 
     void disconnect() override {
         if (connection->isOpen())
             connection->close();
         else
-            throw std::runtime_error("Attempt to disconnect without open connection");
+            throw std::runtime_error("Attempt to disconnect without open connection");//FIXME: Более явные ошибки? Исправить позже трудности с асинхронными throw
     }
 
 public:
     void sendSignal(std::string msg) override{
         if (!connection || !connection->isOpen()) {
-            throw std::runtime_error("Send signal without connection");
+            throw std::runtime_error("Send signal without connection");//FIXME: Более явные ошибки? Исправить позже трудности с асинхронными throw
             return;
         }
         connection->send(msg);
@@ -81,9 +90,7 @@ public:
 };
 
 
-
-
-class NodeConnection : public std::enable_shared_from_this<NodeConnection> {
+class NodeConnection : public std::enable_shared_from_this<NodeConnection> { //TODO: Пока не реализовано 
     rtc::Configuration config{};
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::DataChannel> dc;
