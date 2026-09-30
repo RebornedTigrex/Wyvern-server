@@ -82,15 +82,14 @@ private:
                 nodePtr->connection = ws;
                 node = nodePtr;
             }
-
+            storedNodes[id]->connection = ws;
             callCheckAndSendPendingMessages(node);
-            storedNodes [id]->connection = ws;
 
             });
 
         ws->onMessage([this, ws](rtc::message_variant msg) {
             if (!std::holds_alternative<rtc::binary>(msg))
-                return; // сигналинг — текст
+                return;
             route(ws, std::get<rtc::binary>(std::move(msg)));
             });
 

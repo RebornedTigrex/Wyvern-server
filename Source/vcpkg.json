@@ -1,12 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "dependencies": [
-    "boost-signals2",
-    "libdatachannel",
-    "boost-thread",
+    "boost-asio",
     "boost-beast",
     "boost-json",
-    "boost-asio",
-    "boost-test"
+    "boost-signals2",
+    "boost-test",
+    "boost-thread",
+    "libdatachannel",
+    "libsodium"
   ]
 }
