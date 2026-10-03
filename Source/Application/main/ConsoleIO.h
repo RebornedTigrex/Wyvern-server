@@ -4,12 +4,22 @@
 #include <string>
 #include <vector>
 
+class IRuntimeAPI {// TODO: Что-то придумать с этим непонятным интерфейсом
+public:
+    virtual void callShutdown() = 0;
+
+    virtual void callConnectToPeer(const std::string& remoteID) = 0;
+
+    virtual void callConnectToRelay(const Wyvern::Endpoint& relay) = 0;
+    virtual void callConnectToRelay(const std::string& relayID) = 0;
+};
+
 class ConsoleIO {
-    std::shared_ptr<RuntimeAPI> runtimeAPI;
+    std::shared_ptr<IRuntimeAPI> runtimeAPI;
     std::jthread consoleThread;
 
 public:
-    explicit ConsoleIO(std::shared_ptr<RuntimeAPI> api)
+    explicit ConsoleIO(std::shared_ptr<IRuntimeAPI> api)
         : runtimeAPI(std::move(api))
     {
         consoleThread = std::jthread([this](std::stop_token st) {
