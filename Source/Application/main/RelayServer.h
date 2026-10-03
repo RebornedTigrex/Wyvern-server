@@ -10,7 +10,9 @@
 #include "boost/json.hpp"
 
 #include "SupportUtils.h"
-#include "ProtocolSerialize.h"
+#include "Serialize.h"
+
+#include "Encryption.h"
 
 
 using Server = rtc::WebSocketServer;
@@ -60,8 +62,12 @@ public:
     }
 
 private:
-    void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Вынести в cpp, проверить код
-        // handshake ещё не закончен
+    void checkIdentity() {
+
+    }
+
+
+    void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Переделать. Протокол теперь главный.
         ws->onOpen([this, ws] {
             const std::string id = Wyvern::Utilities::normalize_path(ws->path().value_or(""));
             if (id.empty()) {
@@ -83,7 +89,7 @@ private:
                 node = nodePtr;
             }
             storedNodes[id]->connection = ws;
-            callCheckAndSendPendingMessages(node);
+            callCheckAndSendPendingMessages(node);//TODO: Позже прикрутить после шифрования
 
             });
 
@@ -95,7 +101,7 @@ private:
 
         ws->onClosed([this, ws] {
             std::lock_guard lk{ mtx_ };
-            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: O(n), либо оптимизировать, либо вынести в асинхрон. В целом, если использовать ws как ключ - сложность будет O(1)
+            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: Оптимизировать, либо вынести в асинхрон. В целом, если использовать ws как ключ - сложность будет O(1)
                 if (it->second->connection == ws) {
                     it->second->status = NodeActivityStatus::Offline;
                 }
@@ -109,7 +115,7 @@ private:
     }
 
     void route(const std::shared_ptr<rtc::WebSocket>& from, std::vector<std::byte> body) {
-        Wyvern::Protocol::Message msg = Wyvern::Protocol::deserialize(body);
+        Wyvern::Protocol::Message msg = Wyvern::Binary::deserialize(body);
         std::visit([&](const auto& m) { handle(from, m); }, msg);
     }
 
@@ -133,15 +139,15 @@ private:
             .relays = {},
         };
         
-        auto ack = make_reply<Packets::InitAckMsg>(
+        auto ack = Wyvern::Binary::make_reply<Packets::InitAckMsg>(
             req.env,
             Packets::InitAckMsg::kType,
             static_cast<std::uint64_t>(outSeq_.newNum()),
-            Wyvern::Utilities::getSelfID(),
+            Wyvern::Identity::getSelfID(),
             Wyvern::Utilities::NowMs(),
             std::move(payload));
 
-        from->send(serialize(Message{ std::move(ack) }));
+        from->send(Wyvern::Binary::serialize(Message{ std::move(ack) }));
     }
 
     void handle(const std::shared_ptr<rtc::WebSocket>& from,

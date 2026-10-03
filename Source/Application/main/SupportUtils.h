@@ -76,10 +76,10 @@ namespace Wyvern::Utilities {
         return result;
     }
 
-    static inline std::string getSelfID() {
-        static std::string localID = "SOME-KIND-OF-ID-" + Wyvern::Utilities::generateRandNumSeq(4);//TODO: Заглушка
-        return localID;
-    }
+    //[[deprecated]]static inline std::string getSelfID() {
+    //    static std::string localID = "SOME-KIND-OF-ID-" + Wyvern::Utilities::generateRandNumSeq(4);//TODO: Заглушка
+    //    return localID;
+    //}
 
     static inline std::shared_ptr<Endpoint> getRelayBy(RelaySpecific)//Выбор ссылки не реле по какому-то признаку //TODO: Заглушка, которая всегда отдаёт себя
     {

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -19,7 +21,7 @@ namespace Wyvern::Protocol {
         GetRelayList = 1,
     };
 
-    struct Envelope {
+    struct Envelope { // Конверт для всех остальных пакетов. //TODO: Возможно позже стоит сделать пакет попроще, где метаданные будут в другом месте.
         MsgType type;
         std::uint64_t seq;                          // Порядковый номер пакета
         std::uint64_t reply_to{UINT64_MAX};     // Ответ на порядковый номер выходящего пакета // Нет значение = UINT64_MAX

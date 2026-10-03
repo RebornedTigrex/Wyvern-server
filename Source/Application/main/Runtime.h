@@ -5,13 +5,12 @@
 #include "ConsoleIO.h"
 
 
-
 class NodeRuntime : public std::enable_shared_from_this<NodeRuntime> {
     std::shared_ptr<boost::asio::io_context> ioc;
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
-    std::unique_ptr<RelayConnection> relayConnection;
-    std::unordered_map<std::string, std::shared_ptr<NodeConnection>> storedNodes;
+    std::unique_ptr<Wyvern::Network::RelayConnection> relayConnection;
+    std::unordered_map<std::string, std::shared_ptr<Wyvern::Network::NodeConnection>> storedNodes;
 
 public:
     NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext)
@@ -20,13 +19,13 @@ public:
     {}
 
     // Инициация подключения к удаленному пиру (Пир A)
-    void connectToPeer(const std::string& remoteID) {
-        auto nodeCon = std::make_shared<NodeConnection>();
+    void connectToPeer(const std::string& remoteID){
+        auto nodeCon = std::make_shared<Wyvern::Network::NodeConnection>();
         storedNodes[remoteID] = nodeCon;
 
     }
 
-    void connectToRelay(const Wyvern::Endpoint& relay){}
+    void connectToRelay(const Wyvern::Endpoint& relay) {}
     void connectToRelay(const std::string& relayID) {}
 
 
@@ -35,12 +34,13 @@ private:
     
 };
 
-class RuntimeAPI {
+class RuntimeAPI : public IRuntimeAPI {
     std::shared_ptr < boost::asio::io_context > ioc;
 
     std::shared_ptr<NodeRuntime> runtime;
 public:
-    RuntimeAPI(std::shared_ptr < boost::asio::io_context > ioContext, std::shared_ptr<NodeRuntime> nodeRuntime) : ioc(ioContext), runtime(nodeRuntime) {
+    RuntimeAPI(std::shared_ptr < boost::asio::io_context > ioContext,
+        std::shared_ptr<NodeRuntime> nodeRuntime) : ioc(ioContext), runtime(nodeRuntime) {
 
     }
 
@@ -49,18 +49,18 @@ public:
         //TODO: Доделать нормальный shutdown
     }
 
-    void callConnectToRelay(const Wyvern::Endpoint& relay) {
+    void callConnectToRelay(const Wyvern::Endpoint& relay) override{
         boost::asio::post(*ioc, [this, relay] {
             runtime->connectToRelay(relay);
             });
     }
-    void callConnectToRelay(const std::string& relayID) {
+    void callConnectToRelay(const std::string& relayID) override {
         boost::asio::post(*ioc, [this, relayID] {
             runtime->connectToRelay(relayID);
             });
     }
 
-    void callConnectToPeer(const std::string& remoteID) {//Автоматическое подключение к реле и попытка подключиться к ноде
+    void callConnectToPeer(const std::string& remoteID) override {//Автоматическое подключение к реле и попытка подключиться к ноде
         boost::asio::post(*ioc, [this, remoteID] {
             runtime->connectToPeer(remoteID);
             });
@@ -93,7 +93,7 @@ namespace Wyvern {
             setupNodeRuntime(ioc);
 
             auto api = std::make_shared< RuntimeAPI >(ioc, nodeRuntime);
-            auto console = ConsoleIO(api);// Умрет в деструкторе - как и надо.
+            auto console = ConsoleIO(static_cast<std::shared_ptr<IRuntimeAPI>>(api));// Умрет в деструкторе - как и надо.
 
             
 

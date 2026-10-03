@@ -10,7 +10,8 @@
 #include "Protocol.h"
 
 
-namespace Wyvern::Protocol {
+namespace Wyvern::Binary {
+    using namespace Wyvern::Protocol;
     inline Envelope make_reply_envelope(const Envelope& question,
         MsgType type,
         std::uint64_t seq,
@@ -43,7 +44,7 @@ namespace Wyvern::Protocol {
     }
 }
 
-namespace Wyvern::Protocol {
+namespace Wyvern::Binary {
 
     // ──────────────────── Вспомогательные функции ────────────────────
 
