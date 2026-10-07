@@ -45,7 +45,7 @@ namespace Wyvern {
             return "ws://" + formatted_host + ":" + std::to_string(port) + "/" + peerId;
         }
     };
-    static const std::shared_ptr<Endpoint> selfEndpoint = std::make_shared<Endpoint>("0.0.0.0", 9854);
+    static const Endpoint selfEndpoint = Endpoint("0.0.0.0", 9854);
 }
 
 namespace Wyvern::Utilities {
@@ -81,7 +81,7 @@ namespace Wyvern::Utilities {
     //    return localID;
     //}
 
-    static inline std::shared_ptr<Endpoint> getRelayBy(RelaySpecific)//Выбор ссылки не реле по какому-то признаку //TODO: Заглушка, которая всегда отдаёт себя
+    static inline const Endpoint& getRelayBy(RelaySpecific)//Выбор ссылки не реле по какому-то признаку //TODO: Заглушка, которая всегда отдаёт себя
     {
         return selfEndpoint;
     };

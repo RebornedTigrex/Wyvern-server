@@ -6,6 +6,10 @@
 
 class IRuntimeAPI {// TODO: Что-то придумать с этим непонятным интерфейсом
 public:
+
+    IRuntimeAPI() = default;
+    virtual ~IRuntimeAPI() = default;
+
     virtual void callShutdown() = 0;
 
     virtual void callConnectToPeer(const std::string& remoteID) = 0;

@@ -1,13 +1,12 @@
 #pragma once
 
-#include "rtc/rtc.hpp"
-#include "Boost/asio.hpp"
+#include <rtc/rtc.hpp>
+#include <Boost/asio.hpp>
 
 #include <memory>
 #include <iostream>
 #include <functional>
 #include <deque>
-#include "boost/json.hpp"
 
 #include "SupportUtils.h"
 
@@ -16,10 +15,11 @@ namespace Wyvern::Network
     class IConnection {
     public:
         IConnection() = default;
+        virtual ~IConnection() = default;
 
         virtual void setOnMessageCallback(std::function<void(std::vector<std::byte>)> callback) = 0;
 
-        virtual void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) = 0; //Присоединиться к конкретному реле
+        virtual void connect(const Wyvern::Endpoint& endpoint) = 0; //Присоединиться к конкретному реле
         virtual void connect(std::string PeerIdentification) = 0;
 
         virtual void disconnect() = 0;
@@ -61,9 +61,9 @@ namespace Wyvern::Network
 
 
         //Делаем реле подключение отдельно
-        void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) override {
+        void connect(const Wyvern::Endpoint& endpoint) override {
             if (connection->isClosed())
-                connection->open(endpoint->to_ws_url(Wyvern::Identity::getSelfID()));
+                connection->open(endpoint.to_ws_url(Wyvern::Identity::getSelfID()));
             else
                 throw std::runtime_error("Attempt to connect with open connection");//FIXME: Более явные ошибки? Исправить позже трудности с асинхронными throw
         }

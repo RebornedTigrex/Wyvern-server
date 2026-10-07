@@ -6,48 +6,59 @@
 #include "Encryption.h"
 
 #include <memory>
+#include <format>
 
 #include "rtc/rtc.hpp"
 
 namespace Wyvern::Protocol {
 
-    class IMessageVisitor {
-    public:
-        virtual void visit(std::shared_ptr<rtc::WebSocket>, const Packets::ActionMsg&) = 0;
-        virtual void visit(std::shared_ptr<rtc::WebSocket>, const Packets::RelaysActionAckMsg&) = 0;
-        virtual void visit(std::shared_ptr<rtc::WebSocket>, const Packets::PublishMsg&) = 0;
-        virtual void visit(std::shared_ptr<rtc::WebSocket>, const Packets::AckMsg&) = 0;
-        virtual void visit(std::shared_ptr<rtc::WebSocket>, const Packets::NackMsg&) = 0;
-        virtual ~IMessageVisitor() = default;
+    using websocketPtr = const std::shared_ptr<rtc::WebSocket>&;
+
+    template<typename T>
+    concept MessageVisitorType = requires(T visitor, websocketPtr ws) {
+        { visitor.visit(ws, std::declval<const Packets::ActionMsg&>()) };
+        { visitor.visit(ws, std::declval<const Packets::RelaysActionAckMsg&>()) };
+        { visitor.visit(ws, std::declval<const Packets::PublishMsg&>()) };
+        { visitor.visit(ws, std::declval<const Packets::AckMsg&>()) };
+        { visitor.visit(ws, std::declval<const Packets::NackMsg&>()) };
     };
 
-    class MessageRouter : std::enable_shared_from_this<MessageRouter> {
-    public:
-        MessageRouter(IMessageVisitor& visitor) : visitor_(visitor) {}
 
-        void route(std::shared_ptr<rtc::WebSocket> ws, std::vector<std::byte> body) {
-            auto msg = Wyvern::Binary::deserialize(body);
-            std::visit([&](const auto& m) { visitor_.visit(ws, m); }, msg);
+    template<MessageVisitorType Visitor>
+    class MessageRouter {
+    public:
+        MessageRouter() = default;
+
+        void route(websocketPtr ws, std::vector<std::byte> body) {
+            try {
+                auto msg = Wyvern::Binary::deserialize(body);
+                std::visit([&](const auto& m) { visitor_.visit(ws, m); }, msg);
+            }
+            catch(const std::exception& e){
+                std::cout << std::format("Error in MessageRouter! {}\n", e.what());
+            }
         }
 
+        const Visitor& getVisitor() const { return visitor_; }
+
     private:
-        IMessageVisitor& visitor_;
+        Visitor visitor_;
     };
 
-    class ProtocolVisitor : public IMessageVisitor {
+    class ProtocolVisitor {
     public:
         ProtocolVisitor() = default;
 
-        void visit(const std::shared_ptr<rtc::WebSocket> from,
-            const Wyvern::Protocol::Packets::ActionMsg& req) override
+        void visit(websocketPtr from,
+            const Packets::ActionMsg& req)
         {
-            using namespace Wyvern::Protocol;
 
             std::string status;
 
             switch (req.payload.action) {
-            case ActionType::NoAction: { status = "ok"; break; }
-            case ActionType::GetRelayList: { status = "Not implemented"; break; }
+                case ActionType::NoAction: { status = "ok"; break; }
+                case ActionType::GetRelayList: { status = "Not implemented"; break; }
+                default: status = "Not implemented";
             }
 
 
@@ -68,25 +79,25 @@ namespace Wyvern::Protocol {
             from->send(Wyvern::Binary::serialize(Message{ std::move(ack) }));
         }
 
-        void visit(const std::shared_ptr<rtc::WebSocket> from,
-            const Wyvern::Protocol::Packets::RelaysActionAckMsg& req) override {
+        void visit(websocketPtr from,
+            const Wyvern::Protocol::Packets::RelaysActionAckMsg& req) {
             
-            printf("Спасибо за участие в тестировании! Статус ответа: %s\n", req.payload.status);
+            std::cout << std::format("Спасибо за участие в тестировании! Статус ответа: {}\n", req.payload.status);
             return;
         }
 
-        void visit(const std::shared_ptr<rtc::WebSocket> from,
-            const Wyvern::Protocol::Packets::PublishMsg& req) override
+        void visit(websocketPtr from,
+            const Wyvern::Protocol::Packets::PublishMsg& req)
         {
             return;
         }
 
-        void visit(const std::shared_ptr<rtc::WebSocket> from,
-            const Wyvern::Protocol::Packets::AckMsg& req) override {
+        void visit(websocketPtr from,
+            const Wyvern::Protocol::Packets::AckMsg& req) {
             return;
         }
-        void visit(const std::shared_ptr<rtc::WebSocket> from,
-            const Wyvern::Protocol::Packets::NackMsg& req) override {
+        void visit(websocketPtr from,
+            const Wyvern::Protocol::Packets::NackMsg& req) {
             return;
         }
 

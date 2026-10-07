@@ -31,10 +31,9 @@ struct RelayNodeInfo {
 };
 
 class RelayServer {
-    Wyvern::Protocol::ProtocolVisitor visitor{};
 
     std::optional<Server> serverInstance;
-    std::shared_ptr<Wyvern::Protocol::MessageRouter> router;
+    Wyvern::Protocol::MessageRouter<Wyvern::Protocol::ProtocolVisitor> router{};
 
     std::unordered_map< std::string, std::shared_ptr<RelayNodeInfo>> storedNodes;
 
@@ -44,14 +43,12 @@ class RelayServer {
     bool isNodeActive(RelayNodeInfo) { return true; };
 
 public:
-    explicit RelayServer(std::shared_ptr<Wyvern::Endpoint> endpoint) {
+    explicit RelayServer(const Wyvern::Endpoint& endpoint) {
         rtc::WebSocketServer::Configuration cfg;
-        cfg.port = endpoint->port;
-        cfg.bindAddress = endpoint->host;
+        cfg.port = endpoint.port;
+        cfg.bindAddress = endpoint.host;
         cfg.enableTls = false;
         cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
-
-        router = std::make_shared<Wyvern::Protocol::MessageRouter>(visitor);
 
         serverInstance.emplace(std::move(cfg));
         serverInstance->onClient([this](std::shared_ptr<rtc::WebSocket> ws) {
@@ -93,7 +90,6 @@ private:
                 nodePtr->connection = ws;
                 node = nodePtr;
             }
-            storedNodes[id]->connection = ws;
             callCheckAndSendPendingMessages(node);//TODO: Позже прикрутить после шифрования
 
             });
@@ -101,7 +97,7 @@ private:
         ws->onMessage([this, ws](rtc::message_variant msg) {
             if (!std::holds_alternative<rtc::binary>(msg))
                 return;
-            router->route(ws, std::get<rtc::binary>(std::move(msg)));
+            router.route(ws, std::get<rtc::binary>(std::move(msg)));
             });
 
         ws->onClosed([this, ws] {

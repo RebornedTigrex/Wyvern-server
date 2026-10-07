@@ -292,12 +292,12 @@ namespace Wyvern::Binary {
         uint8_t idx = 0;
         deserialize(data, pos, size, idx);
 
-        switch (idx) {
-        case 0: { Packets::ActionMsg    m; deserialize(data, pos, size, m); return m; }
-        case 1: { Packets::RelaysActionAckMsg m; deserialize(data, pos, size, m); return m; }
-        case 2: { Packets::PublishMsg m; deserialize(data, pos, size, m); return m; }
-        case 3: { Packets::AckMsg     m; deserialize(data, pos, size, m); return m; }
-        case 4: { Packets::NackMsg    m; deserialize(data, pos, size, m); return m; }
+        switch ((MsgType)idx) {
+        case MsgType::Action:           { Packets::ActionMsg    m; deserialize(data, pos, size, m); return m; }
+        case MsgType::RelaysActionAck:  { Packets::RelaysActionAckMsg m; deserialize(data, pos, size, m); return m; }
+        case MsgType::Publish:          { Packets::PublishMsg m; deserialize(data, pos, size, m); return m; }
+        case MsgType::Ack:              { Packets::AckMsg     m; deserialize(data, pos, size, m); return m; }
+        case MsgType::Nack:             { Packets::NackMsg    m; deserialize(data, pos, size, m); return m; }
         default:
             throw std::runtime_error("deserialize: unknown message type");
         }

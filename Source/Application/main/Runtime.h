@@ -5,23 +5,21 @@
 #include "ConsoleIO.h"
 
 
-class NodeRuntime : public std::enable_shared_from_this<NodeRuntime> {
-    Wyvern::Protocol::ProtocolVisitor visitor{};
+class NodeRuntime {
 
-    std::shared_ptr<boost::asio::io_context> ioc;
+    boost::asio::io_context& ioc;
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
-    std::shared_ptr<Wyvern::Protocol::MessageRouter> router;
+    Wyvern::Protocol::MessageRouter<Wyvern::Protocol::ProtocolVisitor> router;
 
     std::unique_ptr<Wyvern::Network::RelayConnection> relayConnection;
     std::unordered_map<std::string, std::shared_ptr<Wyvern::Network::NodeConnection>> storedNodes;
 
 public:
-    NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext)
+    NodeRuntime(boost::asio::io_context& ioContext)
         : ioc(ioContext),
         applicationConfig(std::make_shared<Wyvern::Configuration>())
     {
-        router = std::make_shared<Wyvern::Protocol::MessageRouter>(visitor);
     }
 
     // Инициация подключения к удаленному пиру (Пир A)
@@ -41,33 +39,33 @@ private:
 };
 
 class RuntimeAPI : public IRuntimeAPI {
-    std::shared_ptr < boost::asio::io_context > ioc;
+    boost::asio::io_context& ioc;
 
     std::shared_ptr<NodeRuntime> runtime;
 public:
-    RuntimeAPI(std::shared_ptr < boost::asio::io_context > ioContext,
+    RuntimeAPI(boost::asio::io_context& ioContext,
         std::shared_ptr<NodeRuntime> nodeRuntime) : ioc(ioContext), runtime(nodeRuntime) {
 
     }
 
     void callShutdown() {
-        ioc->stop();//FIXME: В данный момент я не создал никаких механизмов корректного завершения, по этому ждём обращения к убитым указателям
+        ioc.stop();//FIXME: В данный момент я не создал никаких механизмов корректного завершения, по этому ждём обращения к убитым указателям
         //TODO: Доделать нормальный shutdown
     }
 
     void callConnectToRelay(const Wyvern::Endpoint& relay) override{
-        boost::asio::post(*ioc, [this, relay] {
+        boost::asio::post(ioc, [this, relay] {
             runtime->connectToRelay(relay);
             });
     }
     void callConnectToRelay(const std::string& relayID) override {
-        boost::asio::post(*ioc, [this, relayID] {
+        boost::asio::post(ioc, [this, relayID] {
             runtime->connectToRelay(relayID);
             });
     }
 
     void callConnectToPeer(const std::string& remoteID) override {//Автоматическое подключение к реле и попытка подключиться к ноде
-        boost::asio::post(*ioc, [this, remoteID] {
+        boost::asio::post(ioc, [this, remoteID] {
             runtime->connectToPeer(remoteID);
             });
     }
@@ -76,9 +74,9 @@ public:
 
 namespace Wyvern {
     class Runtime : public std::enable_shared_from_this<Runtime> {
-        std::shared_ptr < boost::asio::io_context > ioc;
+        std::unique_ptr < boost::asio::io_context > ioc;
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type> relayThreadHolder;
-        std::shared_ptr<RelayServer> server;
+        std::unique_ptr<RelayServer> server;
         std::shared_ptr<NodeRuntime> nodeRuntime;
 
         bool isNeedSetupRelay;
@@ -87,7 +85,7 @@ namespace Wyvern {
     public:
 
         Runtime(int argc, char* argv []) :
-            ioc(std::make_shared<boost::asio::io_context>()),
+            ioc(std::make_unique<boost::asio::io_context>()),
             relayThreadHolder(boost::asio::make_work_guard(*ioc)),
             isNeedSetupRelay(false),
             isNeedSetupNodeRuntime(true)
@@ -96,9 +94,9 @@ namespace Wyvern {
             parse_arguments(argc, argv);
 
             setupRelay(selfEndpoint);
-            setupNodeRuntime(ioc);
+            setupNodeRuntime(*ioc);
 
-            auto api = std::make_shared< RuntimeAPI >(ioc, nodeRuntime);
+            auto api = std::make_shared< RuntimeAPI >(*ioc, nodeRuntime);
             auto console = ConsoleIO(static_cast<std::shared_ptr<IRuntimeAPI>>(api));// Умрет в деструкторе - как и надо.
 
             
@@ -112,20 +110,18 @@ namespace Wyvern {
             for (int i = 1; i < argc; ++i) {
                 if (std::string_view(argv [i]) == "--relay") {
                     isNeedSetupRelay = true;
-                    return;
                 }
                 else if (std::string_view(argv [i]) == "--no-node") {
                     isNeedSetupNodeRuntime = false;
-                    return;
                 }
             }
         }
 
-        inline void setupRelay(std::shared_ptr<Endpoint> relayEndpoint) {
+        inline void setupRelay(const Endpoint& relayEndpoint) {
 
-            if (isNeedSetupRelay) server = std::make_shared<RelayServer>(relayEndpoint);
+            if (isNeedSetupRelay) server = std::make_unique<RelayServer>(relayEndpoint);
         }
-        inline void setupNodeRuntime(auto ioc) {
+        inline void setupNodeRuntime(boost::asio::io_context& ioc) {
             if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc);
         }
     };

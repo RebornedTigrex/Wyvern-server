@@ -80,7 +80,7 @@ namespace Wyvern::Network{
 		}
 	public:
 
-		void connect(std::shared_ptr<Wyvern::Endpoint> endpoint) override {//Присоединиться к конкретному реле
+		void connect(const Wyvern::Endpoint& endpoint) override {//Присоединиться к конкретному реле
 			connection->connect()
 			connection->send()
 		} 
