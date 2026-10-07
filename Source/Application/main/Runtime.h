@@ -6,8 +6,12 @@
 
 
 class NodeRuntime : public std::enable_shared_from_this<NodeRuntime> {
+    Wyvern::Protocol::ProtocolVisitor visitor{};
+
     std::shared_ptr<boost::asio::io_context> ioc;
     std::shared_ptr<Wyvern::Configuration> applicationConfig;
+
+    std::shared_ptr<Wyvern::Protocol::MessageRouter> router;
 
     std::unique_ptr<Wyvern::Network::RelayConnection> relayConnection;
     std::unordered_map<std::string, std::shared_ptr<Wyvern::Network::NodeConnection>> storedNodes;
@@ -16,7 +20,9 @@ public:
     NodeRuntime(std::shared_ptr<boost::asio::io_context> ioContext)
         : ioc(ioContext),
         applicationConfig(std::make_shared<Wyvern::Configuration>())
-    {}
+    {
+        router = std::make_shared<Wyvern::Protocol::MessageRouter>(visitor);
+    }
 
     // Инициация подключения к удаленному пиру (Пир A)
     void connectToPeer(const std::string& remoteID){

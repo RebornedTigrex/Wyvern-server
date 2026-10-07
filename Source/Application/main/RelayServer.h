@@ -11,6 +11,7 @@
 
 #include "SupportUtils.h"
 #include "Serialize.h"
+#include "MessageRouter.h"
 
 #include "Encryption.h"
 
@@ -30,8 +31,10 @@ struct RelayNodeInfo {
 };
 
 class RelayServer {
+    Wyvern::Protocol::ProtocolVisitor visitor{};
 
     std::optional<Server> serverInstance;
+    std::shared_ptr<Wyvern::Protocol::MessageRouter> router;
 
     std::unordered_map< std::string, std::shared_ptr<RelayNodeInfo>> storedNodes;
 
@@ -47,6 +50,8 @@ public:
         cfg.bindAddress = endpoint->host;
         cfg.enableTls = false;
         cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
+
+        router = std::make_shared<Wyvern::Protocol::MessageRouter>(visitor);
 
         serverInstance.emplace(std::move(cfg));
         serverInstance->onClient([this](std::shared_ptr<rtc::WebSocket> ws) {
@@ -96,7 +101,7 @@ private:
         ws->onMessage([this, ws](rtc::message_variant msg) {
             if (!std::holds_alternative<rtc::binary>(msg))
                 return;
-            route(ws, std::get<rtc::binary>(std::move(msg)));
+            router->route(ws, std::get<rtc::binary>(std::move(msg)));
             });
 
         ws->onClosed([this, ws] {
@@ -113,58 +118,8 @@ private:
             // лог
             });
     }
-
-    void route(const std::shared_ptr<rtc::WebSocket>& from, std::vector<std::byte> body) {
-        Wyvern::Protocol::Message msg = Wyvern::Binary::deserialize(body);
-        std::visit([&](const auto& m) { handle(from, m); }, msg);
-    }
-
 private:
-    void handle(const std::shared_ptr<rtc::WebSocket>& from,
-        const Wyvern::Protocol::Packets::InitMsg& req)
-    {
-        using namespace Wyvern::Protocol;
-
-        std::string status;
-
-        switch (req.payload.action) {
-        case ActionType::NoAction: { status = "ok"; break; }
-        case ActionType::GetRelayList: { status = "Not implemented"; break; }
-        }
-            
-
-        Packets::InitAckPayload payload{
-            .status = status,
-            .relays_payload_size = UINT32_MAX,
-            .relays = {},
-        };
-        
-        auto ack = Wyvern::Binary::make_reply<Packets::InitAckMsg>(
-            req.env,
-            Packets::InitAckMsg::kType,
-            static_cast<std::uint64_t>(outSeq_.newNum()),
-            Wyvern::Identity::getSelfID(),
-            Wyvern::Utilities::NowMs(),
-            std::move(payload));
-
-        from->send(Wyvern::Binary::serialize(Message{ std::move(ack) }));
-    }
-
-    void handle(const std::shared_ptr<rtc::WebSocket>& from,
-        const Wyvern::Protocol::Packets::InitAckMsg& req){return;}
-
-    void handle(const std::shared_ptr<rtc::WebSocket>& from,
-        const Wyvern::Protocol::Packets::PublishMsg& req)
-    {
-        return;
-    }
-
-    void handle(const std::shared_ptr<rtc::WebSocket>& from,
-        const Wyvern::Protocol::Packets::AckMsg& req){ return; }
-    void handle(const std::shared_ptr<rtc::WebSocket>& from,
-        const Wyvern::Protocol::Packets::NackMsg& req){ return; }
     
-    Wyvern::Utilities::ThreadSafeCounter outSeq_;
     std::mutex mtx_;
     std::deque<std::shared_ptr<rtc::WebSocket>> pendingCloseConnection;//TODO: Посмотреть: а надо ли
 };

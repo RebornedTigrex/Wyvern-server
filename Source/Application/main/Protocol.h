@@ -8,12 +8,12 @@
 namespace Wyvern::Protocol {
 
     enum class MsgType {
-        Init = 0,
-        InitAck = 1,
-        Publish = 2,
-        Ack = 3,
-        Nack = 4,
-        Error = 5,
+        Action = 0,
+        Publish = 1,
+        Ack = 2,
+        Nack = 3,
+        Error = 4,
+        RelaysActionAck = 5,
     };
 
     enum class ActionType {
@@ -41,27 +41,27 @@ namespace Wyvern::Protocol {
             double load = 0.0;
         };
 
-        // INIT: запрос списка реле
-        struct InitPayload {
+        // ACTION: запрос действия
+        struct ActionPayload {
             ActionType action;                       // "GET_RELAY_LIST"
             std::int64_t since_ms{INT64_MAX};         // получить изменения с момента \\ Отсутствие значения = INT64_MAX
         };
 
-        // INIT_ACK: подтверждение + опционально список
-        struct InitAckPayload {
+        // ACTION_ACK: подтверждение + опционально список
+        struct RelaysActionAckPayload {
             std::string status;                       // "accepted" | "ok"
-            uint32_t relays_payload_size;             // Отсутствие значения = UINT32_MAX
+            uint32_t payload_size;             // Отсутствие значения = UINT32_MAX
             std::vector<RelayInfo> relays;            // если список небольшой
         };
 
         // PUBLISH: узел публикует свои реле
         struct PublishPayload {
-            uint32_t relays_payload_size;
+            uint32_t payload_size;
             std::vector<RelayInfo> relays;
         };
 
         // ACK: успешное подтверждение
-        struct AckPayload {
+        struct AckPayload {//FIXME: Бестолковый пакет. Неуниверсальный, хотя имя говорит об обратном
             uint32_t stored{UINT32_MAX};            // Отсутствие значения = UINT32_MAX
             uint32_t duplicates{UINT32_MAX};        // Отсутствие значения = UINT32_MAX
         };
@@ -72,13 +72,14 @@ namespace Wyvern::Protocol {
             std::string reason;
         };
 
-        struct InitMsg      { static constexpr MsgType kType = MsgType::Init;     Envelope env; InitPayload     payload; };
-        struct InitAckMsg   { static constexpr MsgType kType = MsgType::InitAck;  Envelope env; InitAckPayload  payload; };
-        struct PublishMsg   { static constexpr MsgType kType = MsgType::Publish;  Envelope env; PublishPayload  payload; };
-        struct AckMsg       { static constexpr MsgType kType = MsgType::Ack;      Envelope env; AckPayload      payload; };
-        struct NackMsg      { static constexpr MsgType kType = MsgType::Nack;     Envelope env; NackPayload     payload; };
+        struct ActionMsg            { static constexpr MsgType kType = MsgType::Action;             Envelope env; ActionPayload             payload; };
+        struct PublishMsg           { static constexpr MsgType kType = MsgType::Publish;            Envelope env; PublishPayload            payload; };
+        struct AckMsg               { static constexpr MsgType kType = MsgType::Ack;                Envelope env; AckPayload                payload; };
+        struct NackMsg              { static constexpr MsgType kType = MsgType::Nack;               Envelope env; NackPayload               payload; };
+        struct RelaysActionAckMsg   { static constexpr MsgType kType = MsgType::RelaysActionAck;    Envelope env; RelaysActionAckPayload    payload; };
+
     }
-    using Message = std::variant<Packets::InitMsg, Packets::InitAckMsg, Packets::PublishMsg, Packets::AckMsg, Packets::NackMsg>;
+    using Message = std::variant<Packets::ActionMsg, Packets::RelaysActionAckMsg, Packets::PublishMsg, Packets::AckMsg, Packets::NackMsg>;
 
 
 

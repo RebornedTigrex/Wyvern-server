@@ -177,33 +177,33 @@ namespace Wyvern::Binary {
         deserialize(data, pos, size, e.payload_size);
     }
 
-    // --- InitPayload ---
+    // --- ActionPayload ---
 
     inline void serialize(std::vector<std::byte>& buf,
-        const Packets::InitPayload& v) {
+        const Packets::ActionPayload& v) {
         serialize(buf, v.action);
         serialize(buf, v.since_ms);
     }
 
     inline void deserialize(const std::byte* data, size_t& pos,
-        size_t size, Packets::InitPayload& v) {
+        size_t size, Packets::ActionPayload& v) {
         deserialize(data, pos, size, v.action);
         deserialize(data, pos, size, v.since_ms);
     }
 
-    // --- InitAckPayload ---
+    // --- RelaysActionAckPayload ---
 
     inline void serialize(std::vector<std::byte>& buf,
-        const Packets::InitAckPayload& v) {
+        const Packets::RelaysActionAckPayload& v) {
         serialize(buf, v.status);
-        serialize(buf, v.relays_payload_size);
+        serialize(buf, v.payload_size);
         serialize(buf, v.relays);
     }
 
     inline void deserialize(const std::byte* data, size_t& pos,
-        size_t size, Packets::InitAckPayload& v) {
+        size_t size, Packets::RelaysActionAckPayload& v) {
         deserialize(data, pos, size, v.status);
-        deserialize(data, pos, size, v.relays_payload_size);
+        deserialize(data, pos, size, v.payload_size);
         deserialize(data, pos, size, v.relays);
     }
 
@@ -211,13 +211,13 @@ namespace Wyvern::Binary {
 
     inline void serialize(std::vector<std::byte>& buf,
         const Packets::PublishPayload& v) {
-        serialize(buf, v.relays_payload_size);
+        serialize(buf, v.payload_size);
         serialize(buf, v.relays);
     }
 
     inline void deserialize(const std::byte* data, size_t& pos,
         size_t size, Packets::PublishPayload& v) {
-        deserialize(data, pos, size, v.relays_payload_size);
+        deserialize(data, pos, size, v.payload_size);
         deserialize(data, pos, size, v.relays);
     }
 
@@ -265,14 +265,14 @@ namespace Wyvern::Binary {
         buf.insert(buf.end(), payload_buf.begin(), payload_buf.end());
     }
 
-    inline void serialize(std::vector<std::byte>& buf, const Packets::InitMsg& m) { serialize_packet(buf, m); }
-    inline void serialize(std::vector<std::byte>& buf, const Packets::InitAckMsg& m) { serialize_packet(buf, m); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::ActionMsg& m) { serialize_packet(buf, m); }
+    inline void serialize(std::vector<std::byte>& buf, const Packets::RelaysActionAckMsg& m) { serialize_packet(buf, m); }
     inline void serialize(std::vector<std::byte>& buf, const Packets::PublishMsg& m) { serialize_packet(buf, m); }
     inline void serialize(std::vector<std::byte>& buf, const Packets::AckMsg& m) { serialize_packet(buf, m); }
     inline void serialize(std::vector<std::byte>& buf, const Packets::NackMsg& m) { serialize_packet(buf, m); }
 
-    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::InitMsg& m)       { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
-    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::InitAckMsg& m)    { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::ActionMsg& m)       { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
+    inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::RelaysActionAckMsg& m)    { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
     inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::PublishMsg& m)    { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
     inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::AckMsg& m)        { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
     inline void deserialize(const std::byte* d, size_t& p, size_t s, Packets::NackMsg& m)       { deserialize(d, p, s, m.env); deserialize(d, p, s, m.payload); }
@@ -293,8 +293,8 @@ namespace Wyvern::Binary {
         deserialize(data, pos, size, idx);
 
         switch (idx) {
-        case 0: { Packets::InitMsg    m; deserialize(data, pos, size, m); return m; }
-        case 1: { Packets::InitAckMsg m; deserialize(data, pos, size, m); return m; }
+        case 0: { Packets::ActionMsg    m; deserialize(data, pos, size, m); return m; }
+        case 1: { Packets::RelaysActionAckMsg m; deserialize(data, pos, size, m); return m; }
         case 2: { Packets::PublishMsg m; deserialize(data, pos, size, m); return m; }
         case 3: { Packets::AckMsg     m; deserialize(data, pos, size, m); return m; }
         case 4: { Packets::NackMsg    m; deserialize(data, pos, size, m); return m; }
