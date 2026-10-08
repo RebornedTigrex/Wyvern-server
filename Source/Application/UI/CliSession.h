@@ -7,6 +7,7 @@
 #include <boost/signals2.hpp>
 
 #include <charconv>
+#include <future>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -182,11 +183,14 @@ namespace Wyvern::Ui {
                 });
         }
 
-        // Читатель живёт снаружи и только публикует строку на наш io_context.
-        void postLine(std::string line) {
-            io.post([this, line = std::move(line)] {
-                runLine(line);
+        // Ждёт конец этапов. false — exit/quit, getline больше не звать.
+        bool submitLine(std::string line) {
+            auto done = std::make_shared<std::promise<bool>>();
+            auto result = done->get_future();
+            io.post([this, line = std::move(line), done] {
+                runLine(line, done);
                 });
+            return result.get();
         }
 
     private:
@@ -243,28 +247,38 @@ namespace Wyvern::Ui {
                 }));
         }
 
-        void runLine(const std::string& line) {
+        void runLine(const std::string& line, std::shared_ptr<std::promise<bool>> done) {
             auto seq = std::make_shared<StageSequence>(io.context());
             auto command = std::make_shared<CliCommand>();
+            auto finish = [done](bool keepReading) {
+                done->set_value(keepReading);
+            };
 
             seq->add([this, line, command](StageSequence::Next next) {
                 *command = parser.parse(line);
                 next();
                 });
-            seq->add([this, command](StageSequence::Next next) {
+            seq->add([this, command, finish](StageSequence::Next next) {
                 if (!screenAllows(*command)) {
                     std::cout << "Сначала relay <ip> <port>\n";
                     printPrompt();
+                    finish(true);
                     return; // цепочка встаёт: команда отклонена этапом экрана
                 }
                 next();
                 });
-            seq->add([this, command](StageSequence::Next next) {
+            seq->add([this, command, finish](StageSequence::Next next) {
+                if (std::holds_alternative<CliCommandQuit>(*command)) {
+                    api->callShutdown();
+                    finish(false); // до следующего getline не доходим
+                    return;
+                }
                 dispatch(*command);
                 next();
                 });
-            seq->add([this](StageSequence::Next) {
+            seq->add([this, finish](StageSequence::Next) {
                 printPrompt();
+                finish(true);
                 });
             seq->run();
         }
@@ -323,9 +337,7 @@ namespace Wyvern::Ui {
 
         void handle(const CliCommandHelp&) { printHelp(); }
 
-        void handle(const CliCommandQuit&) {
-            api->callShutdown();
-        }
+        void handle(const CliCommandQuit&) {}
 
         void handle(const CliCommandUnknown& cmd) {
             std::cout << "Неизвестная команда: " << cmd.raw << "\n";

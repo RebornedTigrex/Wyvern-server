@@ -37,7 +37,9 @@ private:
         while (!st.stop_requested()) {
             if (!std::getline(std::cin, line))
                 break;
-            session.postLine(std::move(line));
+
+            if (!session.submitLine(std::move(line)))
+                break;
         }
     }
 };
