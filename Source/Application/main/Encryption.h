@@ -56,13 +56,14 @@ namespace Wyvern {
         std::string id;
 
         IdentityEntity() {
-            auto keys = Encryption::createKeyPair();
-
-            _secretKey = keys.first;
-            _publicKey = keys.second;
+            adopt(Encryption::createKeyPair());
+        }
+        IdentityEntity(std::array<unsigned char, crypto_sign_SECRETKEYBYTES> secretKey,
+            std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> publicKey) {
+            adopt({ std::move(secretKey), std::move(publicKey) });
         }
 
-        std::string_view node_id() const noexcept { return id; }
+        std::string_view nodeIdentification() const noexcept { return id; }
 
         std::span<const unsigned char, 32> publicKey() const noexcept {
             return std::span<const unsigned char, 32>{_publicKey.data(), _publicKey.size()};
@@ -77,6 +78,23 @@ namespace Wyvern {
                 msg.data(), msg.size(), _secretKey.data()) != 0)
                 throw std::runtime_error("crypto_sign_detached failed");
             return sig;
+        }
+    private:
+        void adopt(std::pair<
+            std::array<unsigned char, crypto_sign_SECRETKEYBYTES>,
+            std::array<unsigned char, crypto_sign_PUBLICKEYBYTES>> keys) {
+
+            _secretKey = keys.first;
+            _publicKey = keys.second;
+
+            std::array<unsigned char, crypto_sign_PUBLICKEYBYTES> derived{};
+            if (crypto_sign_ed25519_sk_to_pk(derived.data(), _secretKey.data()) != 0)
+                throw std::runtime_error("identity: secret key is not ed25519");
+
+            if (sodium_memcmp(derived.data(), _publicKey.data(), derived.size()) != 0)
+                throw std::runtime_error("identity: public key does not match secret");
+
+            id = Encryption::takeFingerprint(_publicKey);
         }
     };
 
@@ -95,7 +113,7 @@ namespace Wyvern {
             return p;
         }
         static std::string getSelfID() {
-            return std::string{ current()->node_id() };
+            return std::string{ current()->nodeIdentification() };
         }
     };
 };

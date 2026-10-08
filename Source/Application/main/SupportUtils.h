@@ -38,7 +38,7 @@ namespace Wyvern {
         uint16_t port;
         std::string host;
 
-        std::string to_ws_url(const std::string& peerId) const {
+        std::string to_ws_url(const std::string peerId = "") const {//FIXME: Не эффективно по памяти?
             // Формирует RFC-совместимый URL (IPv6 в квадратных скобках)
             bool is_ipv6 = host.find(':') != std::string::npos && host.front() != '[';
             std::string formatted_host = is_ipv6 ? ("[" + host + "]") : host;

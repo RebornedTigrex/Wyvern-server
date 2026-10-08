@@ -32,7 +32,7 @@ struct RelayNodeInfo {
 
 class RelayServer {
 
-    std::optional<Server> serverInstance;
+    std::unique_ptr<Server> serverInstance;
     Wyvern::Protocol::MessageRouter<Wyvern::Protocol::ProtocolVisitor> router{};
 
     std::unordered_map< std::string, std::shared_ptr<RelayNodeInfo>> storedNodes;
@@ -50,7 +50,7 @@ public:
         cfg.enableTls = false;
         cfg.maxMessageSize = 256 * 1024; // SDP + trickle ICE спокойно влезут
 
-        serverInstance.emplace(std::move(cfg));
+        serverInstance = std::make_unique<Server>(std::move(cfg));
         serverInstance->onClient([this](std::shared_ptr<rtc::WebSocket> ws) {
             onIncoming(std::move(ws));
             });
@@ -64,34 +64,9 @@ public:
     }
 
 private:
-    void checkIdentity() {
-
-    }
-
 
     void onIncoming(std::shared_ptr<rtc::WebSocket> ws) {//TODO: Переделать. Протокол теперь главный.
         ws->onOpen([this, ws] {
-            const std::string id = Wyvern::Utilities::normalize_path(ws->path().value_or(""));
-            if (id.empty()) {
-                ws->close();
-                return;
-            }
-
-            std::shared_ptr<RelayNodeInfo> node;
-
-            {
-                std::lock_guard lk{ mtx_ };
-                auto& nodePtr = storedNodes [id]; // Находит или создаёт std::shared_ptr
-                if (!nodePtr) {
-                    nodePtr = std::make_shared<RelayNodeInfo>();
-                }
-
-                nodePtr->status = NodeActivityStatus::Online;
-                nodePtr->connection = ws;
-                node = nodePtr;
-            }
-            callCheckAndSendPendingMessages(node);//TODO: Позже прикрутить после шифрования
-
             });
 
         ws->onMessage([this, ws](rtc::message_variant msg) {
@@ -101,13 +76,6 @@ private:
             });
 
         ws->onClosed([this, ws] {
-            std::lock_guard lk{ mtx_ };
-            for (auto it = storedNodes.begin(); it != storedNodes.end(); ) {// FIXME: Оптимизировать, либо вынести в асинхрон. В целом, если использовать ws как ключ - сложность будет O(1)
-                if (it->second->connection == ws) {
-                    it->second->status = NodeActivityStatus::Offline;
-                }
-                ++it;
-            }
             });
 
         ws->onError([](std::string e) {

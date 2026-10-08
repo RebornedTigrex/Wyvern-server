@@ -1,14 +1,15 @@
 #pragma once
 
-#include "RelayServer.h"
-#include "LowLevelConnections.h"
-#include "ConsoleIO.h"
+#include <RelayServer.h>
+#include <LowLevelConnections.h>
+#include <ConsoleIO.h>
+#include <IdentityStore.h>
 
+#include <filesystem>
 
 class NodeRuntime {
 
     boost::asio::io_context& ioc;
-    std::shared_ptr<Wyvern::Configuration> applicationConfig;
 
     Wyvern::Protocol::MessageRouter<Wyvern::Protocol::ProtocolVisitor> router;
 
@@ -17,9 +18,9 @@ class NodeRuntime {
 
 public:
     NodeRuntime(boost::asio::io_context& ioContext)
-        : ioc(ioContext),
-        applicationConfig(std::make_shared<Wyvern::Configuration>())
+        : ioc(ioContext)
     {
+        relayConnection = std::make_unique<Wyvern::Network::RelayConnection>(handleLambda);
     }
 
     // Инициация подключения к удаленному пиру (Пир A)
@@ -29,12 +30,19 @@ public:
 
     }
 
-    void connectToRelay(const Wyvern::Endpoint& relay) {}
-    void connectToRelay(const std::string& relayID) {}
+    void connectToRelay(const Wyvern::Endpoint& relay) {
+        relayConnection->connect(relay);
+    }
+    void connectToRelay(const std::string& relayID) {
+    
+    }
 
 
 private:
-    // Парсинг входящего сигнала от Relay (Signaling Dispatcher)
+    std::function<void(std::shared_ptr<rtc::WebSocket>&,
+        std::vector<std::byte>)> handleLambda{
+        [this](std::shared_ptr < rtc::WebSocket >& ws, std::vector<std::byte> msg) {router.route(ws, msg); }
+    };
     
 };
 
@@ -76,8 +84,14 @@ namespace Wyvern {
     class Runtime : public std::enable_shared_from_this<Runtime> {
         std::unique_ptr < boost::asio::io_context > ioc;
         boost::asio::executor_work_guard<boost::asio::io_context::executor_type> relayThreadHolder;
+
         std::unique_ptr<RelayServer> server;
         std::shared_ptr<NodeRuntime> nodeRuntime;
+
+        std::filesystem::path dataDir;
+        std::shared_ptr<Storage::IRecordStore> records;
+        std::shared_ptr<IdentityEntity> idEntity;
+
 
         bool isNeedSetupRelay;
         bool isNeedSetupNodeRuntime;
@@ -87,11 +101,21 @@ namespace Wyvern {
         Runtime(int argc, char* argv []) :
             ioc(std::make_unique<boost::asio::io_context>()),
             relayThreadHolder(boost::asio::make_work_guard(*ioc)),
+            dataDir("WyvernData"),
             isNeedSetupRelay(false),
             isNeedSetupNodeRuntime(true)
         {
-
             parse_arguments(argc, argv);
+            mainRuntimeFunc();
+        }
+
+    private:
+
+        void mainRuntimeFunc() {
+
+            records = std::make_shared<Storage::FileRecordStore>(dataDir);
+            idEntity = IdentityStore(*records).loadOrCreate();
+            Identity::publish(idEntity);
 
             setupRelay(selfEndpoint);
             setupNodeRuntime(*ioc);
@@ -99,12 +123,10 @@ namespace Wyvern {
             auto api = std::make_shared< RuntimeAPI >(*ioc, nodeRuntime);
             auto console = ConsoleIO(static_cast<std::shared_ptr<IRuntimeAPI>>(api));// Умрет в деструкторе - как и надо.
 
-            
 
             ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT. Этот чел будет держать объект, пока я не вызову ctrl+c
-        }
 
-    private:
+        }
 
         void parse_arguments(int argc, char* argv []) {
             for (int i = 1; i < argc; ++i) {
@@ -114,6 +136,10 @@ namespace Wyvern {
                 else if (std::string_view(argv [i]) == "--no-node") {
                     isNeedSetupNodeRuntime = false;
                 }
+                else if (std::string_view(argv[i]) == "--data-dir" && i + 1 < argc) {
+                    dataDir = argv[++i];
+                }
+
             }
         }
 
