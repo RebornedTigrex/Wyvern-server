@@ -25,6 +25,9 @@ Application/main/Runtime.cpp
 target_include_directories(p2p_messenger
 PRIVATE
     ${CMAKE_SOURCE_DIR}/Application/main
+    ${CMAKE_SOURCE_DIR}/Application/UI
+    ${CMAKE_SOURCE_DIR}/Application
+
 )
 
 target_link_libraries(p2p_messenger

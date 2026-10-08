@@ -4,37 +4,79 @@
 #include <LowLevelConnections.h>
 #include <ConsoleIO.h>
 #include <IdentityStore.h>
+#include <ApplicationEvents.h>
+#include <ChatDirectory.h>
 
 #include <filesystem>
+#include <optional>
 
 class NodeRuntime {
 
     boost::asio::io_context& ioc;
+    std::shared_ptr<Wyvern::ApplicationEvents> events;
+    Wyvern::ChatDirectory chats;
 
     Wyvern::Protocol::MessageRouter<Wyvern::Protocol::ProtocolVisitor> router;
 
     std::unique_ptr<Wyvern::Network::RelayConnection> relayConnection;
     std::unordered_map<std::string, std::shared_ptr<Wyvern::Network::NodeConnection>> storedNodes;
+    std::optional<Wyvern::Endpoint> lastRelay;
 
 public:
-    NodeRuntime(boost::asio::io_context& ioContext)
+    NodeRuntime(boost::asio::io_context& ioContext,
+        std::shared_ptr<Wyvern::ApplicationEvents> bus)
         : ioc(ioContext)
+        , events(std::move(bus))
+        , chats(*events)
     {
         relayConnection = std::make_unique<Wyvern::Network::RelayConnection>(handleLambda);
+        relayConnection->setOnOpenCallback([this] {
+            boost::asio::post(ioc, [this] {
+                if (lastRelay)
+                    events->relayOpen(*lastRelay);
+                });
+            });
+        relayConnection->setOnErrorCallback([this](std::string reason) {
+            boost::asio::post(ioc, [this, reason = std::move(reason)] {
+                events->relayFailed(reason);
+                });
+            });
     }
 
-    // Инициация подключения к удаленному пиру (Пир A)
+    // Инициация подключения к удаленному пиру (Пир A). Чат = id пира.
     void connectToPeer(const std::string& remoteID){
         auto nodeCon = std::make_shared<Wyvern::Network::NodeConnection>();
         storedNodes[remoteID] = nodeCon;
-
+        events->peerDialed(remoteID);
+        chats.ensure(remoteID);
     }
 
     void connectToRelay(const Wyvern::Endpoint& relay) {
-        relayConnection->connect(relay);
+        lastRelay = relay;
+        events->relayDialed(relay);
+        try {
+            relayConnection->connect(relay);
+        }
+        catch (const std::exception& e) {
+            events->relayFailed(e.what());
+        }
     }
     void connectToRelay(const std::string& relayID) {
-    
+        //TODO: резолв id реле в endpoint
+        (void)relayID;
+    }
+
+    void publishSnapshot() {
+        chats.publishSnapshot();
+    }
+
+    // Шов для DataChannel, когда он начнёт отдавать текст.
+    void notePeerMessage(std::string peerId, std::string body) {
+        chats.append(Wyvern::ChatMessage{
+            .peerId = std::move(peerId),
+            .body = std::move(body),
+            .timestampMs = Wyvern::Utilities::NowMs(),
+            });
     }
 
 
@@ -77,6 +119,12 @@ public:
             runtime->connectToPeer(remoteID);
             });
     }
+
+    void callPublishSnapshot() override {
+        boost::asio::post(ioc, [this] {
+            runtime->publishSnapshot();
+            });
+    }
 };
 
 
@@ -87,6 +135,7 @@ namespace Wyvern {
 
         std::unique_ptr<RelayServer> server;
         std::shared_ptr<NodeRuntime> nodeRuntime;
+        std::shared_ptr<Wyvern::ApplicationEvents> events;
 
         std::filesystem::path dataDir;
         std::shared_ptr<Storage::IRecordStore> records;
@@ -116,12 +165,16 @@ namespace Wyvern {
             records = std::make_shared<Storage::FileRecordStore>(dataDir);
             idEntity = IdentityStore(*records).loadOrCreate();
             Identity::publish(idEntity);
+            events = std::make_shared<Wyvern::ApplicationEvents>();
 
             setupRelay(selfEndpoint);
             setupNodeRuntime(*ioc);
 
             auto api = std::make_shared< RuntimeAPI >(*ioc, nodeRuntime);
-            auto console = ConsoleIO(static_cast<std::shared_ptr<IRuntimeAPI>>(api));// Умрет в деструкторе - как и надо.
+            auto console = ConsoleIO(
+                static_cast<std::shared_ptr<IRuntimeAPI>>(api),
+                events,
+                Identity::getSelfID());// Умрет в деструкторе - как и надо.
 
 
             ioc->run();//Не делаю ioc->stop(). Пусть умрет при SIGINT. Этот чел будет держать объект, пока я не вызову ctrl+c
@@ -148,7 +201,7 @@ namespace Wyvern {
             if (isNeedSetupRelay) server = std::make_unique<RelayServer>(relayEndpoint);
         }
         inline void setupNodeRuntime(boost::asio::io_context& ioc) {
-            if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc);
+            if (isNeedSetupNodeRuntime) nodeRuntime = std::make_shared<NodeRuntime>(ioc, events);
         }
     };
 }

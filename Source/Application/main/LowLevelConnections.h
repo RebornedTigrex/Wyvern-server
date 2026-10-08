@@ -24,6 +24,8 @@ namespace Wyvern::Network
         virtual void connect(const Wyvern::Endpoint& endpoint) = 0;
         virtual void setOnMessageCallback(
             std::function<void(std::shared_ptr<rtc::WebSocket>&, std::vector<std::byte>)>) = 0;
+        virtual void setOnOpenCallback(std::function<void()>) = 0;
+        virtual void setOnErrorCallback(std::function<void(std::string)>) = 0;
     };
 
     class INodeConnection : public IConnection {
@@ -77,6 +79,14 @@ namespace Wyvern::Network
                 }
 
                 });
+        }
+
+        void setOnOpenCallback(std::function<void()> onOpen_) override {
+            connection->onOpen(std::move(onOpen_));
+        }
+
+        void setOnErrorCallback(std::function<void(std::string)> onError_) override {
+            connection->onError(std::move(onError_));
         }
 
     public:
