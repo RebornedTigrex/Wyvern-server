@@ -20,8 +20,15 @@ static void setupAbortHandling() {
     _CrtSetReportMode(_CRT_ERROR,  _CRTDBG_MODE_FILE);
     _CrtSetReportFile(_CRT_ERROR,  _CRTDBG_FILE_STDERR);
 
-    SetConsoleCP(1251);
-    SetConsoleOutputCP(1251);
+    //TODO: Вынести всю муть с кодировкой в CLI
+    uint32_t ConsoleCP = GetConsoleCP();
+
+    std::cout << "ConsoleCP: " << ConsoleCP << " ConsoleOutputCP: " << GetConsoleOutputCP() << "\n";
+    std::cout << "If you have any problems with encoding, contact Tigrex\n\n";
+    if (ConsoleCP != 65001) {
+        SetConsoleCP(1251);
+        SetConsoleOutputCP(1251);
+    }
 #endif
     std::signal(SIGABRT, [](int) {
         fputs("[fatal] abort() called - exiting\n", stderr);
