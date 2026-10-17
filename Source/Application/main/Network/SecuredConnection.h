@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Encryption.h"
-#include "LowLevelConnections.h"
+#include "Network/LowLevelConnections.h"
 
 #include "Serialize.h"
 

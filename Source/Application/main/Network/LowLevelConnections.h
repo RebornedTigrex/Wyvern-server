@@ -10,18 +10,21 @@
 
 #include "SupportUtils.h"
 
+#include <Network/NetMessageBus.h>
+
 namespace Wyvern::Network
 {
     class IConnection {
     public:
         virtual ~IConnection() = default;
+        virtual void connect() = 0;
         virtual void disconnect() = 0;
         virtual void send(std::vector<std::byte> msg) = 0;
     };
 
     class IRelayConnection : public IConnection {
     public:
-        virtual void connect(const Wyvern::Endpoint& endpoint) = 0;
+        //virtual void connect(const Wyvern::Endpoint& endpoint) = 0;
         virtual void setOnMessageCallback(
             std::function<void(std::shared_ptr<rtc::WebSocket>&, std::vector<std::byte>)>) = 0;
         virtual void setOnOpenCallback(std::function<void()>) = 0;
@@ -30,7 +33,7 @@ namespace Wyvern::Network
 
     class INodeConnection : public IConnection {
     public:
-        virtual void connect(std::string peerId) = 0;
+        //virtual void connect(std::string peerId) = 0;
         virtual void handleRemoteDescription(const std::string& type, const std::string& sdp) = 0;
         virtual void handleRemoteCandidate(const std::string& candidate, const std::string& mid) = 0;
     };
@@ -40,19 +43,27 @@ namespace Wyvern::Network
 
         std::shared_ptr<rtc::WebSocket> connection;
         std::shared_ptr<Wyvern::Configuration> applicationConfig;
+        NetMessageBus& networkBus;
+
+        const Wyvern::Endpoint endpoint;
+
+        std::function<void(std::shared_ptr<rtc::WebSocket>&, std::vector<std::byte>)> onMsgCallback;
 
 
     public:
-        RelayConnection(
-            std::function<void(std::shared_ptr<rtc::WebSocket>&, std::vector<std::byte>)> onMsgCallback
-        ) :
+        RelayConnection( Wyvern::Endpoint Endpoint, NetMessageBus& bus) : endpoint(Endpoint), 
+            networkBus(bus),
             connection(std::make_shared<rtc::WebSocket>())
         {
             setOnMessageCallback(onMsgCallback);
         }
 
+        void giveMsgCallback(std::function<void(std::shared_ptr<rtc::WebSocket>&, std::vector<std::byte>)> _onMsgCallback) {
+            onMsgCallback = _onMsgCallback;
+        }
+
         //Делаем реле подключение отдельно
-        void connect(const Wyvern::Endpoint& endpoint) override {
+        void connect() override {
             if (connection->isClosed())
                 connection->open(endpoint.to_ws_url());
             else
@@ -97,27 +108,5 @@ namespace Wyvern::Network
             }
             connection->send(msg);
         }
-    };
-
-
-    class NodeConnection : public std::enable_shared_from_this<NodeConnection> { //TODO: Пока не реализовано 
-        rtc::Configuration config{};
-        std::shared_ptr<rtc::PeerConnection> pc;
-        std::shared_ptr<rtc::DataChannel> dc;
-
-    public:
-        NodeConnection() : pc(std::make_shared<rtc::PeerConnection>(config)) {}
-
-
-        // Обработка удаленного SDP (Offer или Answer)
-        void handleRemoteDescription(const std::string& type, const std::string& sdp) {
-            pc->setRemoteDescription(rtc::Description(sdp, type));
-        }
-
-        // Обработка удаленного ICE кандидата
-        void handleRemoteCandidate(const std::string& candidate, const std::string& mid) {
-            pc->addRemoteCandidate(rtc::Candidate(candidate, mid));
-        }
-
     };
 }

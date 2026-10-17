@@ -3,7 +3,7 @@
 #include <Protocol.h>
 #include <Serialize.h>
 #include <SupportUtils.h>
-#include <Encryption.h>
+#include <Encryption.h> // FIXME: Странный инклюд ради SelfId
 
 #include <memory>
 #include <format>
@@ -43,6 +43,10 @@ namespace Wyvern::Protocol {
 
     private:
         Visitor visitor_;
+    };
+
+    class SignalingVisitor {
+
     };
 
     class ProtocolVisitor {

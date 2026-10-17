@@ -5,21 +5,51 @@
 #include <variant>
 #include <vector>
 
-namespace Wyvern::Protocol {
+namespace Wyvern::Protocol {//TODO: Перевести от
 
     enum class MsgType {
         Action = 0,
-        Publish = 1,
-        Ack = 2,
-        Nack = 3,
-        Error = 4,
-        RelaysActionAck = 5,
+        Publish,
+        Ack,
+        Nack,
+        Error,
+        RelaysActionAck,
+        Signaling,
     };
 
     enum class ActionType {
         NoAction = 0,
-        GetRelayList = 1,
+        GetRelayList,
     };
+
+    enum class ICEType {
+        Offer = 0,
+        Answer,
+        Pranswer,
+    };
+
+    std::string ICEtypeToString(ICEType type) {
+        switch (type) {
+            case ICEType::Offer:    return "offer";
+            case ICEType::Answer:   return "answer";
+            case ICEType::Pranswer: return "pranswer";
+            default: 
+                throw std::runtime_error("Error during type converting: Unknown ICE type");
+        }
+    }
+
+    ICEType stringToICEtype(std::string type) {
+        if (type == "offer")
+            return ICEType::Offer;
+        else if (type == "answer")
+            return ICEType::Answer;
+        else if (type == "pranswer")
+            return ICEType::Pranswer;
+        else 
+            throw std::runtime_error("Error during type converting: Unknown ICE type");
+    }
+
+
 
     struct Envelope { // Конверт для всех остальных пакетов. //TODO: Возможно позже стоит сделать пакет попроще, где метаданные будут в другом месте.
         MsgType type;
@@ -31,6 +61,21 @@ namespace Wyvern::Protocol {
         uint32_t payload_size {UINT32_MAX}; // Нет значение = UINT32_MAX
     };
 
+    namespace Signaling {
+        struct LocalDescriptionPayload {
+            ICEType type;
+            std::string sdp;
+        };
+
+        struct IceCandidatePayload {
+            std::string candidate;
+            std::string mid;
+        };
+
+        struct LocalDescriptionMsg  { static constexpr MsgType kType = MsgType::Signaling; Envelope env; LocalDescriptionPayload payload; };
+        struct IceCandidateMsg      { static constexpr MsgType kType = MsgType::Signaling; Envelope env; IceCandidatePayload payload; };
+    
+    }
 
     namespace Packets {
 
@@ -79,7 +124,15 @@ namespace Wyvern::Protocol {
         struct RelaysActionAckMsg   { static constexpr MsgType kType = MsgType::RelaysActionAck;    Envelope env; RelaysActionAckPayload    payload; };
 
     }
-    using Message = std::variant<Packets::ActionMsg, Packets::RelaysActionAckMsg, Packets::PublishMsg, Packets::AckMsg, Packets::NackMsg>;
+    using Message = std::variant<Packets::ActionMsg,
+        Packets::RelaysActionAckMsg,
+        Packets::PublishMsg,
+        Packets::AckMsg,
+        Packets::NackMsg,
+
+        Signaling::LocalDescriptionMsg,
+        Signaling::IceCandidateMsg
+    >;
 
 
 

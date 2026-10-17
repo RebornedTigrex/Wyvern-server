@@ -1,7 +1,7 @@
 #pragma once
 
 #include <RelayServer.h>
-#include <LowLevelConnections.h>
+#include <Network/LowLevelConnections.h>
 #include <ConsoleIO.h>
 #include <IdentityStore.h>
 #include <ApplicationEvents.h>
@@ -41,6 +41,11 @@ public:
                 events->relayFailed(reason);
                 });
             });
+    }
+
+    void disconnectFromPeer(const std::string& remoteID) {
+        auto nodeCon = storedNodes.find(remoteID);
+    //TODO: Не реализовано.
     }
 
     // Инициация подключения к удаленному пиру (Пир A). Чат = id пира.

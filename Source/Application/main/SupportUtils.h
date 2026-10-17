@@ -16,18 +16,6 @@ enum class P2PConnectionType {
 
 
 namespace Wyvern {
-    class Configuration {
-    public:
-        Configuration() {};
-
-        RelaySpecific getPreferRelaySpecific() const { return RelaySpecific::Closest; };
-        P2PConnectionType getPreferConnectionType() const { return P2PConnectionType::PreferRelay; };
-
-        int getRelayTimeoutMS() const { return 500; } // TODO: заглушка
-        int getMaxReconnectAttempts() const { return 5; }
-
-    };
-
 
     class Endpoint {
     public:
@@ -46,6 +34,23 @@ namespace Wyvern {
         }
     };
     static const Endpoint selfEndpoint = Endpoint("0.0.0.0", 9854);
+
+    class Configuration {
+    public:
+        Configuration() {};
+
+        RelaySpecific getPreferRelaySpecific() const { return RelaySpecific::Closest; };
+        P2PConnectionType getPreferConnectionType() const { return P2PConnectionType::PreferRelay; };
+
+        int getRelayTimeoutMS() const { return 500; } // TODO: заглушка
+        int getMaxReconnectAttempts() const { return 5; }
+
+        //std::string getTurnName() const { return "wyvern-turn.duckdns.org"; }
+        //uint16_t getTurnPort() const { return 4758; }
+        Endpoint getTurnEndpoint() const { return Endpoint("wyvern-turn.duckdns.org", 4758); }
+
+
+    };
 }
 
 namespace Wyvern::Utilities {
